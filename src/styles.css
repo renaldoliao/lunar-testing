@@ -277,3 +277,9 @@
 
 /* Lunar's voice: names and items set in Lora italic instead of handwriting */
 .font-hand { font-style: italic; }
+
+/* Highlighter, as on the Baklava board: a swipe of colour across the time, name or note */
+:root { --marker: #f5d78e; }
+.mark { cursor: pointer; background-image: linear-gradient(var(--marker), var(--marker)); background-repeat: no-repeat; background-position: left center; background-size: 0% 100%; transition: background-size .34s var(--ease-bar), color .2s ease .08s; }
+.mark.marked { background-size: 100% 100%; color: #532c14 !important; }
+.note-circle.mark.marked { background-size: 100% 100%; }

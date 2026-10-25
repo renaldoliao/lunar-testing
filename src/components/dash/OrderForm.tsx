@@ -44,7 +44,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
     if (!check()) return;
     const o = build(false);
     onDone();
-    void dispatch({ t: "update", order: o }).then((r) => toast(r.ok ? `Confirmed ${o.name}${o.text ? ", text on its way" : ""}` : r.error));
+    void dispatch({ t: "update", order: o }).then((r) => toast(r.ok ? `Confirmed ${o.name}. ${o.text ? "Text" : "Call"} them on ${o.phone || "their number"}` : r.error));
   };
   const del = () => {
     if (!initial) return;
@@ -108,7 +108,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
 
       <label className="flex cursor-pointer gap-3">
         <input type="checkbox" checked={text} onChange={(e) => setText(e.target.checked)} className="mt-1 h-5 w-5 accent-primary" />
-        <span className="text-sm"><span className="font-semibold text-foreground">Text a confirmation and pickup reminder</span><br /><span className="text-muted-foreground">Ask them first. Tick this only if they say yes.</span></span>
+        <span className="text-sm"><span className="font-semibold text-foreground">Happy to be texted</span><br /><span className="text-muted-foreground">Ask them first. Tick this only if they say yes.</span></span>
       </label>
 
       <div className="sticky bottom-0 -mx-6 mt-2 flex items-center gap-4 border-t border-border bg-card px-6 py-4">

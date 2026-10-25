@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DAILY_LIMIT, downloadCsv, fmtTime, iso, mondayOf, money, orderBooked, orderPieces, parse, dispatch, sizeIndex, useStore, weekDays, type Order } from "@/lib/store";
 import { Drawer } from "./Drawer";
@@ -21,6 +22,12 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
   const seen = useRef<Set<string> | null>(null);
 
   useEffect(() => { const t = setInterval(() => setClock(nowMin()), 30000); return () => clearInterval(t); }, []);
+  // On a phone the days stack, so jump straight to today, like Baklava.
+  useEffect(() => {
+    if (window.innerWidth > 700) return;
+    const t = setTimeout(() => { const el = document.querySelector("[data-today]"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 8, behavior: "smooth" }); }, 250);
+    return () => clearTimeout(t);
+  }, []);
   useEffect(() => {
     const ids = new Set(s.orders.map((o) => o.id));
     if (seen.current) {
@@ -36,32 +43,32 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
   const today = iso(new Date());
   const short = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const weekOrders = s.orders.filter((o) => o.date >= iso(first) && o.date <= iso(last));
-  const dayOrders = (k: string) => s.orders.filter((o) => o.date === k).sort((a, b) => a.time - b.time);
+  const dayOrders = (k: string) => s.orders.filter((o) => o.date === k).sort((a, b) => (a.pending ? 0 : 1) - (b.pending ? 0 : 1) || a.time - b.time);
   const dayPieces = (k: string) => dayOrders(k).reduce((n, o) => n + orderPieces(o, idx), 0);
   const pending = s.orders.filter((o) => o.pending).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  // Our own double-tap: two taps on the same order within 600ms, even if the hand moves a little.
-  // This does not depend on the computer's double-click speed setting, and works the same on phones.
-  const lastTap = useRef<{ id: string; t: number; x: number; y: number } | null>(null);
-  const [armed, setArmed] = useState<string | null>(null);
-  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const tap = (e: React.PointerEvent, o: Order) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+  // Same as Baklava: one tap asks "picked up?" in a small box, so nothing is crossed out by accident.
+  const [pop, setPop] = useState<Order | null>(null);
+  // Highlighter marks on the time, name or note. Personal reminders, kept on this computer only.
+  const [marks, setMarks] = useState<Record<string, true>>({});
+  useEffect(() => { try { setMarks(JSON.parse(localStorage.getItem("lunar-marks") || "{}")); } catch { /* none yet */ } }, []);
+  const mark = (key: string) => setMarks((m) => {
+    const n = { ...m };
+    if (n[key]) delete n[key]; else n[key] = true;
+    try { localStorage.setItem("lunar-marks", JSON.stringify(n)); } catch { /* ignore */ }
+    return n;
+  });
+  const tap = (e: React.MouseEvent, o: Order) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("button")) return;
+    const m = t.closest<HTMLElement>("[data-mark]");
+    if (m) return mark(o.id + m.dataset["mark"]);
     if (o.pending) return open(o);
-    const now = performance.now(), l = lastTap.current;
-    clearTimeout(armTimer.current);
-    if (l && l.id === o.id && now - l.t < 600 && Math.hypot(e.clientX - l.x, e.clientY - l.y) < 48) {
-      lastTap.current = null;
-      setArmed(null);
-      toggle(o.id);
-    } else {
-      lastTap.current = { id: o.id, t: now, x: e.clientX, y: e.clientY };
-      setArmed(o.id);
-      armTimer.current = setTimeout(() => { setArmed(null); lastTap.current = null; }, 600);
-    }
+    setPop(o);
   };
-  const toggle = (id: string) => {
+  const confirmNew = (o: Order) => void dispatch({ t: "update", order: { ...o, pending: false } }).then((r) => toast(r.ok ? `Confirmed ${o.name}. ${o.text ? "Text" : "Call"} them on ${o.phone || "their number"}` : r.error));
+  const toggle = (id: string, v: boolean) => {
     setPicked((p) => new Set(p).add(id));
-    void dispatch({ t: "done", id, v: !s.done[id] }).then((r) => { if (!r.ok) toast(r.error); });
+    void dispatch({ t: "done", id, v }).then((r) => { if (!r.ok) toast(r.error); });
   };
   const go = (n: number) => { if (n === week) return; setDir(n > week ? "from-right" : "from-left"); setPicked(new Set()); setWeek(n); };
   const open = (o: Order) => { go(weekOf(o.date)); setPanel({ kind: "write", date: o.date, order: o }); };
@@ -104,7 +111,7 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
         {days.map((d) => {
           const k = iso(d), list = dayOrders(k), pcs = dayPieces(k), closed = s.closed[k], isToday = k === today;
           return (
-            <section key={k} className={`flex min-h-[520px] flex-col border-b border-r border-border last:border-r-0 ${isToday ? "bg-secondary/40" : ""}`}>
+            <section key={k} data-today={isToday || undefined} className={`flex min-h-[140px] flex-col sm:min-h-[520px] border-b border-r border-border last:border-r-0 ${isToday ? "bg-secondary/40" : ""}`}>
               <button onClick={() => setPanel({ kind: "bake", date: k })} className="border-b-2 border-primary px-3 py-3 text-left hover:bg-secondary active:bg-muted">
                 <div className={`inline-block font-serif text-xl text-foreground ${isToday ? "border-b-2 border-accent" : ""}`}>{d.toLocaleDateString("en-US", { weekday: "long" })}</div>
                 <div className="mt-0.5 flex items-center gap-2 text-sm">
@@ -116,22 +123,25 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
               <div className="ruled flex-1">
                 {list.map((o) => {
                   const done = !!s.done[o.id];
-                  const soon = isToday && !done && !o.pending && o.time - clock <= 60 && o.time - clock >= -15;
+                  const soon = isToday && !done && !o.pending && o.time - clock <= 120 && o.time - clock >= -30;
                   const cls = ["ent group border-b border-border", done && "picked", picked.has(o.id) && "now", just.has(o.id) && "just", o.pending && "pending"].filter(Boolean).join(" ");
                   return (
                     <div key={o.id} className={cls}>
-                      <div role="button" tabIndex={0} onPointerUp={(e) => tap(e, o)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
-                        title={o.pending ? "Tap to confirm" : done ? "Double-click to un-cross" : "Double-click to cross out"} className={`body cursor-pointer select-none touch-manipulation px-3 py-2.5 hover:bg-secondary ${armed === o.id ? "!bg-muted" : ""}`}>
+                      <div role="button" tabIndex={0} onClick={(e) => tap(e, o)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (o.pending) open(o); else setPop(o); } }}
+                        aria-label={`${o.name}, ${fmtTime(o.time)}${done ? ", picked up" : ""}`}
+                        className="body cursor-pointer select-none px-3 py-2.5 outline-none hover:bg-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                         <div className="flex items-center gap-2">
-                          <span className={`whitespace-nowrap px-1.5 font-mono text-[13px] font-medium ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
-                          {o.pending ? <span className="text-xs font-mono font-medium uppercase tracking-[0.08em] text-foreground">new, confirm</span>
+                          <span data-mark="t" className={`mark whitespace-nowrap px-1.5 font-mono text-[13px] font-medium ${marks[o.id + "t"] ? "marked" : ""} ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
+                          {o.pending ? <span className="font-mono text-xs font-medium uppercase tracking-[0.08em] text-foreground">new online</span>
                             : <span className="text-xs text-muted-foreground">{o.source === "online" ? "online" : "by hand"} · {orderPieces(o, idx)} pc</span>}
-                          <button onClick={(e) => { e.stopPropagation(); open(o); }} className="press ml-auto text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">edit</button>
+                          {o.pending
+                            ? <button onClick={(e) => { e.stopPropagation(); confirmNew(o); }} className="press ml-auto bg-accent px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-accent-foreground hover:bg-accent/90">Confirm</button>
+                            : <button onClick={(e) => { e.stopPropagation(); open(o); }} className="press ml-auto text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">edit</button>}
                         </div>
-                        <div className="strike font-hand text-2xl font-medium leading-tight text-foreground">{o.name}</div>
+                        <div className="strike font-hand text-2xl font-medium leading-tight text-foreground"><span data-mark="n" className={`mark ${marks[o.id + "n"] ? "marked" : ""}`}>{o.name}</span></div>
                         {o.items.map((i, n) => <div key={n} className="strike font-hand text-lg leading-tight text-muted-foreground">{i.qty} x {i.code}</div>)}
                         {o.phone && <div className="text-xs text-muted-foreground">{o.phone}</div>}
-                        {o.note && <div className="note-circle mt-1">{o.note}</div>}
+                        {o.note && <div data-mark="c" className={`note-circle mark mt-1 ${marks[o.id + "c"] ? "marked" : ""}`}>{o.note}</div>}
                       </div>
                     </div>
                   );
@@ -146,9 +156,13 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
         })}
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
-        Double-click an order to cross it out when it is picked up, and double-click again to undo. Tap a day name for that day's bake list.
+        Tap an order when it is picked up. Tap a time, name or note to highlight it. Tap a day name for that day's bake list.
         <button onClick={exportCsv} className="press ml-3 underline underline-offset-2 hover:text-foreground">Export CSV</button>
       </p>
+
+      <PickupBox o={pop} done={pop ? !!s.done[pop.id] : false} idx={idx} onClose={() => setPop(null)}
+        onYes={(o, v) => { setPop(null); toggle(o.id, v); toast(v ? `Picked up: ${o.name}` : `${o.name} is back to not picked up`); }}
+        onCancel={(o) => { setPop(null); void dispatch({ t: "delete", id: o.id }).then((r) => toast(r.ok ? "Order cancelled" : r.error)); }} />
 
       <Drawer open={!!active} onClose={close}>
         {active?.kind === "write" && <OrderForm key={active.order?.id ?? active.date} initial={active.order} date={active.date} weekOffset={active.order ? weekOf(active.order.date) : week} onDone={close} />}
@@ -213,4 +227,27 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
       </div>
     );
   }
+}
+
+// The small centred box from Baklava: confirm the pickup, go back, or cancel the order (two taps).
+function PickupBox({ o, done, idx, onClose, onYes, onCancel }: { o: Order | null; done: boolean; idx: ReturnType<typeof sizeIndex>; onClose: () => void; onYes: (o: Order, v: boolean) => void; onCancel: (o: Order) => void }) {
+  const [arm, setArm] = useState(false);
+  const yes = useRef<HTMLButtonElement>(null);
+  useEffect(() => { setArm(false); if (!o) return; yes.current?.focus(); const k = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [o]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!o || typeof document === "undefined") return null;
+  const items = o.items.map((i) => { const m = idx.get(i.code); return m ? `${i.qty} x ${m.product.name}, ${m.size.pieces}` : `${i.qty} x ${i.code}`; }).join("; ");
+  return createPortal(
+    <div className="scrim fixed inset-0 z-50 flex items-center justify-center bg-primary/45 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label={done ? "Order picked up" : "Confirm order pickup"} className="a-popin w-full max-w-[360px] border-2 border-primary bg-card px-6 py-5">
+        <h3 className="font-serif text-2xl font-medium leading-tight text-foreground">{done ? "Order picked up" : "Confirm order pickup"}</h3>
+        <p className="mb-5 mt-1 text-muted-foreground">{o.name}, {fmtTime(o.time)}, {items}</p>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <button ref={yes} onClick={() => onYes(o, !done)} className="press flex-1 bg-primary px-5 py-3 font-mono text-sm font-medium uppercase tracking-[0.08em] text-primary-foreground hover:bg-primary/90 sm:flex-none">{done ? "Not picked up" : "Confirm"}</button>
+          <button onClick={onClose} className="press text-foreground underline underline-offset-4">Back</button>
+          <button onClick={() => (arm ? onCancel(o) : setArm(true))} className={`press ml-auto text-sm ${arm ? "font-semibold text-destructive" : "text-destructive underline underline-offset-4"}`}>{arm ? "Tap again to cancel order" : "Cancel order"}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }

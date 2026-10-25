@@ -112,6 +112,23 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  // Every link inside the site changes page in place, without a full reload, so moving
+  // between the website, the order page and the dashboard feels seamless.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as HTMLElement).closest?.("a");
+      if (!a || a.target || a.hasAttribute("download")) return;
+      const url = new URL(a.href, location.href);
+      if (url.origin !== location.origin || url.pathname.startsWith("/api") || /\.[a-z0-9]+$/i.test(url.pathname)) return;
+      if (url.pathname === location.pathname && url.hash) return; // same-page section links scroll on their own
+      e.preventDefault();
+      void router.navigate(url.hash ? { to: url.pathname, hash: url.hash.slice(1) } : { to: url.pathname });
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [router]);
 
   return (
     <QueryClientProvider client={queryClient}>

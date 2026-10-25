@@ -216,7 +216,7 @@ function OrderSection() {
             <p className="mb-3 font-mono text-xs font-medium uppercase tracking-[0.08em] text-primary-foreground/50">04</p>
             <h2 className="mb-4 font-serif text-4xl tracking-[-0.01em] md:text-5xl">Order for pickup</h2>
             <p className="mb-8 max-w-sm text-[15px] leading-[1.5] text-primary-foreground/70">
-              Choose your boxes, a day and a time. Baked the morning you collect, and we text you to confirm. Pay when you pick up.
+              Choose your boxes, a day and a time. Baked the morning you collect, and we confirm with you directly. Pay when you pick up.
             </p>
             <a href="/order" className={`${btn} bg-primary-foreground text-primary hover:bg-primary-foreground/90`}>Start an order »</a>
             <p className="mt-6 text-sm text-primary-foreground/60">

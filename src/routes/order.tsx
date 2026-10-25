@@ -98,7 +98,7 @@ function OrderPage() {
           <div className="min-w-0">
             <h1 className="a-arrive max-w-[12ch] font-serif text-[56px] font-medium leading-[0.92] tracking-[-0.03em] text-foreground sm:text-[88px]">Order for pickup</h1>
             <p className="a-arrive mt-5 max-w-[46ch] text-lg leading-[1.45] text-muted-foreground" style={{ animationDelay: ".2s" }}>
-              Baked the morning you collect. Choose your boxes, a day and a time, and we will text to confirm.
+              Baked the morning you collect. Choose your boxes, a day and a time, and we will be in touch to confirm.
             </p>
 
             <section className="a-rise mt-14" style={{ animationDelay: ".28s" }}>
@@ -140,7 +140,7 @@ function OrderPage() {
               </label>
               <label className="mt-5 flex cursor-pointer items-start gap-3 text-sm">
                 <input type="checkbox" checked={text} onChange={(e) => setText(e.target.checked)} className="mt-0.5 h-5 w-5 accent-primary" />
-                <span className="text-foreground">Text me a confirmation and a reminder on pickup day</span>
+                <span className="text-foreground">It is fine to text me about this order</span>
               </label>
             </section>
           </div>
@@ -217,7 +217,7 @@ function Thanks({ o, onAgain }: { o: Order; onAgain: () => void }) {
         <h1 className="a-arrive font-serif text-[56px] font-medium leading-[0.92] tracking-[-0.03em] text-foreground sm:text-[88px]">Thank you, {live.name.split(" ")[0]}.</h1>
         <p className="a-arrive mt-6 max-w-[44ch] text-lg leading-[1.45] text-muted-foreground" style={{ animationDelay: ".2s" }}>
           {live.pending
-            ? <>Your order is with the bakers. We will {live.text ? "text" : "call"} {live.phone} to confirm, usually within the hour.</>
+            ? <>Your order is with the bakers. We will {live.text ? "text" : "call"} {live.phone} once it is confirmed. This page will update too.</>
             : <>Confirmed. See you {parse(live.date).toLocaleDateString("en-US", { weekday: "long" })} at {fmtTime(live.time)}.</>}
         </p>
         {!live.pending && <p className="a-rise mt-4 inline-block border-2 border-accent px-3 py-1 text-sm font-semibold text-foreground">The bakery has confirmed your order</p>}
