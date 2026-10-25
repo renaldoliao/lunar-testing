@@ -11,11 +11,20 @@ import { seed, type State } from "@/lib/store";
 let pool: pg.Pool | null = null;
 let ready: Promise<void> | null = null;
 
-export const dbEnabled = () => !!process.env["DATABASE_URL"];
+// Neon on Vercel may name the address DATABASE_URL, POSTGRES_URL, or add a prefix such as
+// STORAGE_DATABASE_URL. Accept any of them so connecting the database "just works".
+function dbUrl(): string | undefined {
+  const env = process.env;
+  const direct = env["DATABASE_URL"] || env["POSTGRES_URL"];
+  if (direct) return direct;
+  const key = Object.keys(env).find((k) => /(^|_)(DATABASE_URL|POSTGRES_URL)$/.test(k) && /^postgres(ql)?:\/\//.test(env[k] || ""));
+  return key ? env[key] : undefined;
+}
+export const dbEnabled = () => !!dbUrl();
 
 function getPool() {
   if (!pool) {
-    const url = process.env["DATABASE_URL"]!;
+    const url = dbUrl()!;
     const local = /localhost|127\.0\.0\.1/.test(url);
     pool = new pg.Pool({ connectionString: url, max: 3, ssl: local || /sslmode=disable/.test(url) ? undefined : { rejectUnauthorized: false } });
   }
