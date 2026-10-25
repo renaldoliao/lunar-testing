@@ -100,8 +100,8 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
                   const cls = ["ent group border-b border-border", done && "picked", picked.has(o.id) && "now", just.has(o.id) && "just", o.pending && "pending"].filter(Boolean).join(" ");
                   return (
                     <div key={o.id} className={cls}>
-                      <div role="button" tabIndex={0} onClick={(e) => { if (e.detail > 1) return; o.pending ? open(o) : toggle(o.id); }} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
-                        className="body cursor-pointer select-none px-3 py-2.5 hover:bg-secondary active:bg-muted">
+                      <div role="button" tabIndex={0} onClick={() => { if (o.pending) open(o); }} onDoubleClick={() => { if (!o.pending) toggle(o.id); }} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
+                        title={o.pending ? "Tap to confirm" : done ? "Double-click to un-cross" : "Double-click to cross out"} className="body cursor-pointer select-none touch-manipulation px-3 py-2.5 hover:bg-secondary">
                         <div className="flex items-center gap-2">
                           <span className={`whitespace-nowrap px-1.5 font-mono text-[13px] font-medium ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
                           {o.pending ? <span className="text-xs font-mono font-medium uppercase tracking-[0.08em] text-foreground">new, confirm</span>
@@ -126,7 +126,7 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
         })}
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
-        Tap an order to cross it out when it is picked up. Tap a day name for that day's bake list.
+        Double-click an order to cross it out when it is picked up, and double-click again to undo. Tap a day name for that day's bake list.
         <button onClick={exportCsv} className="press ml-3 underline underline-offset-2 hover:text-foreground">Export CSV</button>
       </p>
 
