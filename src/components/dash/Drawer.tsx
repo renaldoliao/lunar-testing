@@ -28,7 +28,7 @@ export function Drawer({ open, onClose, children }: { open: boolean; onClose: ()
   if (!shown || typeof document === "undefined") return null;
   // Rendered straight into <body> so page animations never trap it inside a smaller box.
   return createPortal(
-    <div className="fixed inset-0 z-40">
+    <div className={`fixed inset-0 z-40 ${leaving ? "pointer-events-none" : ""}`}>
       <div className={`scrim absolute inset-0 bg-primary/45 ${leaving ? "out" : ""}`} onClick={onClose} />
       <aside role="dialog" aria-modal="true" className={`sheet absolute right-0 top-0 h-full w-full max-w-[440px] overflow-y-auto border-l-2 border-primary bg-card px-6 py-6 ${leaving ? "out" : ""}`}>
         <button onClick={onClose} className="press absolute right-4 top-4 px-2 py-1 text-sm text-muted-foreground hover:text-foreground">Close</button>

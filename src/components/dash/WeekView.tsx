@@ -100,8 +100,8 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
                   const cls = ["ent group border-b border-border", done && "picked", picked.has(o.id) && "now", just.has(o.id) && "just", o.pending && "pending"].filter(Boolean).join(" ");
                   return (
                     <div key={o.id} className={cls}>
-                      <div role="button" tabIndex={0} onClick={() => (o.pending ? open(o) : toggle(o.id))} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
-                        className="body cursor-pointer px-3 py-2.5 hover:bg-secondary active:bg-muted">
+                      <div role="button" tabIndex={0} onClick={(e) => { if (e.detail > 1) return; o.pending ? open(o) : toggle(o.id); }} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
+                        className="body cursor-pointer select-none px-3 py-2.5 hover:bg-secondary active:bg-muted">
                         <div className="flex items-center gap-2">
                           <span className={`whitespace-nowrap px-1.5 font-mono text-[13px] font-medium ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
                           {o.pending ? <span className="text-xs font-mono font-medium uppercase tracking-[0.08em] text-foreground">new, confirm</span>
