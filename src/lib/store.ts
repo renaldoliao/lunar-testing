@@ -152,7 +152,13 @@ if (typeof window !== "undefined") {
   try { channel = new BroadcastChannel("lunar-orders"); channel.onmessage = () => { if (status === "live") void fetchState(); else { const n = read(); if (n) replace(n); } }; } catch { channel = null; }
   void fetchState(true);
   setInterval(() => { if ((status === "live" || status === "offline") && document.visibilityState === "visible") void fetchState(); }, 3000);
-  window.addEventListener("focus", () => { if (status === "live" || status === "offline") void fetchState(); });
+  // Coming back to a tab always re-checks for news, in case a message from another tab was missed.
+  const recheck = () => {
+    if (status === "live" || status === "offline") void fetchState();
+    else if (status === "local") { const n = read(); if (n && JSON.stringify(n) !== JSON.stringify(state)) replace(n); }
+  };
+  window.addEventListener("focus", recheck);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recheck(); });
 }
 
 let queue: Promise<unknown> = Promise.resolve();
