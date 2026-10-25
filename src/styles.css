@@ -1,6 +1,15 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+/* Fonts served from this site, no Google request */
+@import "@fontsource/lora/latin-400.css";
+@import "@fontsource/lora/latin-500.css";
+@import "@fontsource/lora/latin-600.css";
+@import "@fontsource/lora/latin-400-italic.css";
+@import "@fontsource/lora/latin-500-italic.css";
+@import "@fontsource/lora/latin-600-italic.css";
+@import "@fontsource/dm-mono/latin-400.css";
+@import "@fontsource/dm-mono/latin-500.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -53,8 +62,9 @@
   --color-chart-5: var(--chart-5);
   --color-brand-blue: var(--brand-blue);
   --font-serif: "Lora", Georgia, serif;
-  --font-sans: "PT Sans", system-ui, sans-serif;
-  --font-hand: "Caveat", cursive;
+  --font-sans: "Lora", Georgia, serif; /* Lunar sets everything in Lora */
+  --font-hand: "Lora", Georgia, serif;
+  --font-mono: "DM Mono", ui-monospace, monospace; /* buttons and labels, as on lunarbakery.com */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -67,26 +77,26 @@
 
 :root {
   --radius: 0.25rem;
-  --background: oklch(0.977 0.008 75);
-  --foreground: oklch(0.24 0.05 262);
-  --card: oklch(0.995 0.004 80);
-  --card-foreground: oklch(0.24 0.05 262);
+  --background: #faf6ef; /* warm paper */
+  --foreground: #532c14; /* espresso brown, Lunar's text colour */
+  --card: #fffdf9;
+  --card-foreground: #532c14;
   --popover: oklch(0.995 0.004 80);
   --popover-foreground: oklch(0.24 0.05 262);
-  --primary: oklch(0.24 0.05 262);
-  --primary-foreground: oklch(0.977 0.008 75);
-  --secondary: oklch(0.94 0.015 75);
-  --secondary-foreground: oklch(0.24 0.05 262);
-  --muted: oklch(0.94 0.015 75);
-  --muted-foreground: oklch(0.5 0.03 262);
-  --accent: oklch(0.74 0.11 80);
-  --accent-foreground: oklch(0.24 0.05 262);
+  --primary: #532c14;
+  --primary-foreground: #f8f1e5;
+  --secondary: #f3eadc;
+  --secondary-foreground: #532c14;
+  --muted: #eadfcc;
+  --muted-foreground: #85634d;
+  --accent: #9e462c; /* rust, Lunar's button and note colour */
+  --accent-foreground: #f8f1e5;
   --brand-blue: oklch(0.4 0.12 265);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.88 0.02 75);
+  --border: #e5d8c6;
   --input: oklch(0.85 0.02 75);
-  --ring: oklch(0.74 0.11 80);
+  --ring: #9e462c;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -149,17 +159,18 @@
 }
 
 @layer base {
-  body { font-family: var(--font-sans); }
-  h1, h2, h3 { font-family: var(--font-serif); }
+  body { font-family: var(--font-sans); font-weight: 400; -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; }
 }
 
 @utility code-chip {
   display: inline-block;
   background: color-mix(in oklab, var(--accent) 45%, transparent);
   padding: 0 0.4rem;
-  font-family: var(--font-hand);
-  font-weight: 700;
-  font-size: 1.15rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
   color: var(--foreground);
 }
 @utility note-circle {
@@ -167,8 +178,9 @@
   border: 2px solid var(--accent);
   border-radius: 9999px;
   padding: 0.05rem 0.7rem;
-  font-family: var(--font-hand);
-  font-size: 1.05rem;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.95rem;
   line-height: 1.2;
   color: var(--foreground);
 }
@@ -183,7 +195,7 @@
 :root {
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-bar: cubic-bezier(0.3, 0.7, 0.2, 1);
-  --hl: oklch(0.88 0.12 88);
+  --hl: #f2dcc0;
 }
 @layer base {
   html { -webkit-tap-highlight-color: transparent; }
@@ -262,3 +274,6 @@
 .tab-out { opacity: 0; transform: translateY(6px); transition: opacity .14s ease-in, transform .14s ease-in; }
 .lockcard { transition: transform .5s cubic-bezier(0.4, 0, 0.2, 1), opacity .35s ease; }
 .lockcard.out { transform: translateY(-14px) scale(.985); opacity: 0; }
+
+/* Lunar's voice: names and items set in Lora italic instead of handwriting */
+.font-hand { font-style: italic; }

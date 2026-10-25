@@ -18,7 +18,7 @@ export function Toaster() {
   }, [msg]);
   if (!msg || typeof document === "undefined") return null;
   return createPortal(
-    <div key={msg.key} role="status" className="a-rise fixed bottom-5 left-4 right-4 z-50 bg-primary px-4 py-3 font-bold text-primary-foreground sm:right-auto sm:max-w-sm">
+    <div key={msg.key} role="status" className="a-rise fixed bottom-5 left-4 right-4 z-50 bg-primary px-4 py-3 font-semibold text-primary-foreground sm:right-auto sm:max-w-sm">
       {msg.text}
     </div>,
     document.body,

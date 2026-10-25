@@ -1,182 +1,254 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getState, onArrive, parse, fmtTime, useStore } from "@/lib/store";
-import { Toaster, toast } from "@/components/dash/Toast";
-import { WeekView } from "@/components/dash/WeekView";
-import { HistoryView } from "@/components/dash/HistoryView";
-import { ProductsView } from "@/components/dash/ProductsView";
+import { useEffect, useState } from "react";
+import { motion, type Variants } from "framer-motion";
+import { Header } from "@/components/site/Header";
+import { Footer } from "@/components/site/Footer";
+import { money, useStore, useSyncStatus } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Orders Dashboard · Lunar Bakery" },
-      { name: "description", content: "Weekly pickup board, bake lists, history and products for Lunar Bakery." },
-      { property: "og:title", content: "Orders Dashboard · Lunar Bakery" },
-      { property: "og:description", content: "Weekly pickup board, bake lists, history and products for Lunar Bakery." },
+      { title: "Lunar Bakery · French pastry, Taiwanese soul" },
+      { name: "description", content: "Hand-crafted French pastries with Taiwanese flavours, inspired by the seasons. A San Francisco pop-up bakery. Order boxes for pickup online." },
+      { property: "og:title", content: "Lunar Bakery · French pastry, Taiwanese soul" },
+      { property: "og:description", content: "Hand-crafted seasonal pastries from a San Francisco pop-up bakery. Order boxes for pickup online." },
+      { property: "og:image", content: "/images/og.jpg" },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: Index,
+  component: Home,
 });
 
-function Logo({ big }: { big?: boolean }) {
-  return (
-    <div className="leading-none">
-      <div className={`font-sans font-bold tracking-[0.12em] text-brand-blue ${big ? "text-5xl" : "text-2xl"}`}>LUNAR</div>
-      <div className={`mt-1 tracking-[0.22em] text-accent ${big ? "text-xs" : "text-[9px]"}`}>ARTISAN BAKED GOODS</div>
-    </div>
-  );
-}
+// Same motion as the Replit design: soft rise, gentle stagger.
+const fadeInUp: Variants = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } } };
+const stagger: Variants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.12 } } };
 
-function Index() {
-  const [user, setUser] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-  useEffect(() => { try { setUser(localStorage.getItem("lunar-user")); } catch { /* private mode */ } setReady(true); }, []);
-  if (!ready) return <BoardSkeleton />;
-  return user
-    ? <Dashboard onLogout={() => { try { localStorage.removeItem("lunar-user"); } catch { /* ignore */ } setUser(null); }} />
-    : <Login onLogin={(u) => { try { localStorage.setItem("lunar-user", u); } catch { /* ignore */ } setUser(u); }} />;
-}
+type Season = "spring" | "summer" | "fall" | "winter";
+const SEASONS: { key: Season; label: string }[] = [
+  { key: "spring", label: "Spring" },
+  { key: "summer", label: "Summer" },
+  { key: "fall", label: "Fall" },
+  { key: "winter", label: "Winter" },
+];
+const MENU: Record<Season, { name: string; price: string; img: string }[]> = {
+  spring: [
+    { name: "Strawberry Mochi Tart", price: "$7", img: "/images/gift-box.jpg" },
+    { name: "Matcha Croissant", price: "$6", img: "/images/natas-kouigns.jpg" },
+    { name: "Cherry Blossom Financier", price: "$5", img: "/images/kouign-tray.jpg" },
+    { name: "Earl Grey Kouign-Amann", price: "$8", img: "/images/kouign-gold.jpg" },
+  ],
+  summer: [
+    { name: "Pastel de Nata", price: "$6", img: "/images/hero-natas.jpg" },
+    { name: "Kouign-Amann", price: "$7", img: "/images/kouign-tray.jpg" },
+    { name: "Natas & Kouigns", price: "$6", img: "/images/natas-kouigns.jpg" },
+    { name: "Kouign with Gold", price: "$8", img: "/images/kouign-gold.jpg" },
+  ],
+  fall: [
+    { name: "Taro Puff", price: "$6", img: "/images/natas-kouigns.jpg" },
+    { name: "Osmanthus Madeleine", price: "$5", img: "/images/kouign-gold.jpg" },
+    { name: "Chestnut Mont Blanc", price: "$9", img: "/images/gift-box.jpg" },
+    { name: "Black Sesame Kouign-Amann", price: "$8", img: "/images/kouign-tray.jpg" },
+  ],
+  winter: [
+    { name: "Tangerine Cake", price: "$7", img: "/images/gift-box.jpg" },
+    { name: "Red Bean Danish", price: "$6", img: "/images/kouign-tray.jpg" },
+    { name: "Longan Bun", price: "$5", img: "/images/natas-kouigns.jpg" },
+    { name: "Yuja Éclair", price: "$7", img: "/images/kouign-gold.jpg" },
+  ],
+};
+const MAP = "https://maps.google.com/?q=2948+Folsom+St,+San+Francisco,+CA+94110";
+const IG = "https://www.instagram.com/lunarbakerysf/";
 
-function BoardSkeleton() {
-  return (
-    <div className="min-h-screen bg-background px-5" aria-busy="true" aria-label="Loading">
-      <div className="flex items-center gap-10 py-5"><div className="skel h-9 w-28" /><div className="skel h-5 w-56" /></div>
-      <div className="mx-auto mb-4 h-8 w-64 skel" />
-      <div className="grid grid-cols-1 gap-px border border-border sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="space-y-3 bg-card p-3"><div className="skel h-6 w-28" /><div className="skel h-3 w-20" />
-            {Array.from({ length: 3 }, (_, j) => <div key={j} className="skel h-16 w-full" />)}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const btn = "press inline-flex items-center justify-center px-10 py-4 text-sm font-mono font-medium uppercase tracking-[0.08em]";
+const btnSolid = `${btn} bg-accent text-accent-foreground hover:bg-accent/90`;
+const btnLine = `${btn} border border-primary text-primary hover:bg-primary hover:text-primary-foreground`;
+const eyebrow = "mb-3 text-xs font-mono font-medium uppercase tracking-[0.08em] text-accent";
 
-function Login({ onLogin }: { onLogin: (u: string) => void }) {
-  const [mode, setMode] = useState<"in" | "up">("in");
-  const [u, setU] = useState("");
-  const [p, setP] = useState("");
-  const [code, setCode] = useState("");
-  const [show, setShow] = useState(false);
-  const [err, setErr] = useState("");
-  const [out, setOut] = useState(false);
-  const users = (): Record<string, string> => { try { return { admin: "lunar123", ...JSON.parse(localStorage.getItem("lunar-users") || "{}") }; } catch { return { admin: "lunar123" }; } };
-  const enter = (name: string) => { setOut(true); setTimeout(() => onLogin(name), 380); };
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (out) return;
-    if (mode === "in") return users()[u.trim()] === p ? enter(u.trim()) : setErr("That username or password isn't right.");
-    if (!u.trim()) return setErr("Choose a username.");
-    if (p.length < 8) return setErr("Passwords need 8 or more characters.");
-    if (code.trim().toUpperCase() !== "LUNAR") return setErr("That join code isn't right. Ask the owner for it.");
-    if (users()[u.trim()]) return setErr("That username is taken.");
-    try { localStorage.setItem("lunar-users", JSON.stringify({ ...JSON.parse(localStorage.getItem("lunar-users") || "{}"), [u.trim()]: p })); } catch { /* ignore */ }
-    enter(u.trim());
-  };
-  const label = "text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground";
-  const input = "mt-1 w-full border-b-2 border-border bg-transparent py-2 text-lg outline-none focus:border-primary";
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-4">
-      <form onSubmit={submit} className={`a-arrive lockcard w-full max-w-[400px] border border-primary bg-card shadow-[6px_6px_0_var(--border)] ${out ? "out" : ""}`}>
-        <div className="flex flex-col items-center border-b border-primary bg-secondary px-8 py-10">
-          <Logo big />
-          <p className="mt-4 font-serif italic text-accent">French pastry, Taiwanese soul.</p>
-        </div>
-        <div key={mode} className="a-fade space-y-5 p-8">
-          <h1 className="font-serif text-2xl text-foreground">{mode === "in" ? "Orders dashboard" : "Create a login"}</h1>
-          <label className="block"><span className={label}>{mode === "in" ? "Username" : "Choose a username"}</span><input autoComplete="username" value={u} onChange={(e) => { setU(e.target.value); setErr(""); }} className={input} /></label>
-          <label className="block"><span className={label}>{mode === "in" ? "Password" : "Choose a password, 8 or more characters"}</span>
-            <div className="flex items-end gap-3"><input autoComplete={mode === "in" ? "current-password" : "new-password"} type={show ? "text" : "password"} value={p} onChange={(e) => { setP(e.target.value); setErr(""); }} className={input} /><button type="button" onClick={() => setShow(!show)} className="press pb-2 text-sm text-muted-foreground underline">{show ? "Hide" : "Show"}</button></div>
-          </label>
-          {mode === "up" && <label className="block"><span className={label}>Join code from the owner</span><input value={code} onChange={(e) => setCode(e.target.value)} className={input} /></label>}
-          {err && <p key={err} className="a-rise text-sm text-destructive">{err}</p>}
-          <button className="press w-full bg-primary py-3 font-bold text-primary-foreground hover:opacity-90">{mode === "in" ? "Sign in" : "Create login"}</button>
-          {mode === "in" ? (
-            <>
-              <p className="text-sm text-muted-foreground">New here? <button type="button" onClick={() => { setMode("up"); setErr(""); }} className="press text-foreground underline">Create a login</button></p>
-              <p className="border-t border-border pt-4 text-sm text-muted-foreground">Demo login: <span className="code-chip">admin</span> and <span className="code-chip">lunar123</span></p>
-            </>
-          ) : (
-            <button type="button" onClick={() => { setMode("in"); setErr(""); }} className="press text-sm text-foreground underline">Back to sign in</button>
-          )}
-        </div>
-      </form>
-    </main>
-  );
-}
-
-const TABS = ["Week", "History", "Products"] as const;
-type Tab = (typeof TABS)[number];
-function Dashboard({ onLogout }: { onLogout: () => void }) {
-  const s = useStore();
-  const [tab, setTab] = useState<Tab>("Week");
-  const [shown, setShown] = useState<Tab>("Week");
-  const [leaving, setLeaving] = useState(false);
-  const [numbers, setNumbers] = useState(false);
-  const nav = useRef<HTMLElement>(null);
-  const [bar, setBar] = useState({ x: 0, w: 0 });
-
-  // The underline glides to whichever tab is on.
-  const tabRef = useRef(tab);
-  tabRef.current = tab;
-  const place = () => {
-    const b = nav.current?.querySelector<HTMLButtonElement>(`[data-t="${tabRef.current}"]`);
-    if (b) setBar((o) => (o.x === b.offsetLeft && o.w === b.offsetWidth ? o : { x: b.offsetLeft, w: b.offsetWidth }));
-  };
-  useLayoutEffect(place, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+function Home() {
+  const [season, setSeason] = useState<Season>("summer");
+  // Arriving from another page with a #section link: glide to it once the page has drawn.
   useEffect(() => {
-    window.addEventListener("resize", place);
-    document.fonts?.ready.then(place);
-    return () => window.removeEventListener("resize", place);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const switchTab = (t: Tab) => {
-    if (t === tab || leaving) return;
-    setTab(t);
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setShown(t); return; }
-    setLeaving(true);
-    setTimeout(() => { setShown(t); setLeaving(false); window.scrollTo(0, 0); }, 140);
-  };
-
-  // A new online order from the order page lands here live.
-  useEffect(() => onArrive((ids) => {
-    const got = getState().orders.filter((x) => ids.includes(x.id) && x.pending);
-    if (got.length === 1) toast(`New online order: ${got[0]!.name}, ${parse(got[0]!.date).toLocaleDateString("en-US", { weekday: "short" })} ${fmtTime(got[0]!.time)}`);
-    else if (got.length > 1) toast(`${got.length} new online orders`);
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const waiting = s.orders.filter((o) => o.pending).length;
-  useEffect(() => { document.title = waiting ? `(${waiting}) Lunar Orders` : "Orders Dashboard · Lunar Bakery"; }, [waiting]);
+    const h = window.location.hash.slice(1);
+    if (h) setTimeout(() => document.getElementById(h)?.scrollIntoView({ behavior: "smooth" }), 150);
+  }, []);
 
   return (
-    <div className="a-arrive min-h-screen bg-background px-5 pb-12">
-      <header className="flex flex-wrap items-center gap-x-10 gap-y-3 py-4">
-        <Logo />
-        <nav ref={nav} className="relative flex gap-2">
-          {TABS.map((t) => (
-            <button key={t} data-t={t} onClick={() => switchTab(t)} aria-pressed={tab === t}
-              className={`relative px-3 py-2 font-bold ${tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-              {t}{t === "Week" && waiting > 0 && <span className="a-chip ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs text-accent-foreground">{waiting}</span>}
-            </button>
-          ))}
-          <span className="tabbar" style={{ width: bar.w - 24, transform: `translateX(${bar.x + 12}px)` }} />
-        </nav>
-        <div className="ml-auto flex items-center gap-6 font-bold text-foreground">
-          <a href="/order" target="_blank" rel="noreferrer" className="press rounded-full border-2 border-primary px-4 py-1.5 text-sm hover:bg-primary hover:text-primary-foreground">Open order page</a>
-          <button onClick={() => setNumbers(true)} className={`press transition-opacity ${tab === "Week" ? "" : "pointer-events-none opacity-0"}`} tabIndex={tab === "Week" ? 0 : -1}>Week numbers</button>
-          <button onClick={onLogout} className="press">Sign out</button>
-        </div>
-      </header>
-      <div className={leaving ? "tab-out" : ""}>
-        <div key={shown} className={`tab-in ${shown === "Week" ? "" : "pt-8"}`}>
-          {shown === "Week" && <WeekView numbersOpen={numbers} setNumbersOpen={setNumbers} />}
-          {shown === "History" && <HistoryView />}
-          {shown === "Products" && <ProductsView />}
-        </div>
-      </div>
-      <Toaster />
+    <div className="flex min-h-screen flex-col bg-background text-primary">
+      <Header />
+      <main className="flex-grow">
+        {/* 01 HERO */}
+        <section id="hero" className="w-full">
+          <div className="w-full overflow-hidden" style={{ maxHeight: "60vh", minHeight: 280 }}>
+            <motion.img initial={{ scale: 1.06, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+              src="/images/hero-natas.jpg" alt="A tray of freshly baked pastel de nata" fetchPriority="high"
+              className="h-full w-full object-cover" style={{ maxHeight: "60vh", minHeight: 280, objectPosition: "center 60%" }} />
+          </div>
+          <motion.div initial="hidden" animate="visible" variants={stagger} className="flex flex-col items-center px-6 pb-16 pt-12 text-center md:pb-20 md:pt-16">
+            <motion.div variants={fadeInUp} className="mb-7 h-[3px] w-20 bg-primary" />
+            <motion.h1 variants={fadeInUp} className="mb-5 max-w-3xl font-serif text-5xl leading-[0.95] tracking-[-0.02em] md:text-7xl lg:text-8xl">
+              French pastry, <span className="italic text-accent">Taiwanese soul.</span>
+            </motion.h1>
+            <motion.p variants={fadeInUp} className="mb-10 max-w-md text-base leading-[1.45] text-primary/60 md:text-lg">
+              Hand-crafted seasonal pastries, found only if you're paying attention. San Francisco · Est. 2020.
+            </motion.p>
+            <motion.div variants={fadeInUp} className="flex w-full flex-col gap-4 sm:w-auto sm:flex-row">
+              <a href="/order" className={btnSolid}>Order for pickup »</a>
+              <a href="#menu" onClick={(e) => { e.preventDefault(); document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" }); }} className={btnLine}>This Season's Menu</a>
+            </motion.div>
+          </motion.div>
+        </section>
+
+        {/* 02 CREDIBILITY */}
+        <section className="w-full border-y border-border/60 px-6 py-5">
+          <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-3 md:gap-4">
+            {["Est. 2020", "Featured In SF Chronicle", "★★★★★ on Yelp"].map((t) => (
+              <span key={t} className="inline-flex items-center border border-primary/30 px-4 py-2 text-xs font-mono font-medium uppercase tracking-[0.08em]">{t}</span>
+            ))}
+            <span className="inline-flex items-center gap-2 border border-primary/30 px-4 py-2 text-xs font-mono font-medium uppercase tracking-[0.08em]">
+              <span className="inline-block h-2 w-2 rounded-full border-2 border-primary" />Third-Culture Bakery
+            </span>
+          </div>
+        </section>
+
+        {/* 03 THIS SEASON */}
+        <section id="menu" className="w-full scroll-mt-16 px-6 py-20 md:py-28">
+          <div className="mx-auto max-w-[1200px]">
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={fadeInUp} className="mb-10">
+              <p className={eyebrow}>03</p>
+              <h2 className="mb-8 font-serif text-4xl tracking-[-0.01em] md:text-5xl">This Season's Menu</h2>
+              <div className="flex flex-wrap" role="tablist">
+                {SEASONS.map(({ key, label }) => (
+                  <button key={key} role="tab" aria-selected={season === key} onClick={() => setSeason(key)}
+                    className={`press border px-6 py-2 text-sm font-mono font-medium uppercase tracking-[0.08em] ${season === key ? "border-primary bg-primary text-primary-foreground" : "border-primary/30 text-primary hover:border-primary"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+            <motion.div key={season} initial="hidden" animate="visible" variants={stagger} className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
+              {MENU[season].map((item) => (
+                <motion.div key={item.name} variants={fadeInUp} className="group flex flex-col">
+                  <div className="relative aspect-square overflow-hidden bg-muted">
+                    <img src={item.img} alt={item.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                    <span className="absolute bottom-3 right-3 border border-border/60 bg-background px-2 py-1 text-xs font-semibold tracking-wide">{item.price}</span>
+                  </div>
+                  <p className="mt-3 text-sm leading-snug">{item.name}</p>
+                </motion.div>
+              ))}
+            </motion.div>
+            <div className="mt-10"><a href="/order" className={`${btnLine} px-8 py-3`}>View Full Menu & Pre-order</a></div>
+          </div>
+        </section>
+
+        {/* 04 ORDER, live from the shop's own product list */}
+        <OrderSection />
+
+        {/* 05 OUR STORY */}
+        <section id="story" className="w-full scroll-mt-16 border-t border-border/40 px-6 py-20 md:py-28">
+          <div className="mx-auto max-w-[1200px]">
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={stagger} className="flex flex-col items-start gap-10 md:flex-row md:gap-16">
+              <motion.div variants={fadeInUp} className="w-full shrink-0 md:w-5/12">
+                <div className="aspect-[4/3] overflow-hidden"><img src="/images/afternoon-tea.jpg" alt="Lunar Bakery afternoon tea spread" loading="lazy" className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" /></div>
+              </motion.div>
+              <motion.div variants={fadeInUp} className="flex w-full flex-col md:w-7/12">
+                <p className={eyebrow}>05</p>
+                <h2 className="mb-6 font-serif text-4xl tracking-[-0.01em] md:text-5xl">Our Story</h2>
+                <p className="mb-4 text-[15px] leading-[1.5] text-primary/70">
+                  Lunar is a woman-owned micro-bakery in San Francisco, run by Jennie, its owner and solo baker. She grew up in a Hakka-Taiwanese family in New York, trained in pastry school and in kitchens like Tartine, Arsicault and Miette, and started Lunar in 2020.
+                </p>
+                <p className="mb-8 text-[15px] leading-[1.5] text-primary/70">
+                  We pop up across the Bay Area, moving with the seasons. Every menu blends French technique with the Taiwanese flavours Jennie grew up with, made by hand with the best ingredients she can find.
+                </p>
+                <div className="mb-10 flex gap-4">
+                  <div className="w-[3px] shrink-0 self-stretch bg-primary" />
+                  <p className="font-serif text-lg italic leading-[1.45] text-primary/80">"My hope is that each bite brings a moment of comfort, joy, and connection."</p>
+                </div>
+                <a href="https://www.lunarbakery.com/about-us" target="_blank" rel="noopener noreferrer" className={`${btnLine} self-start px-8 py-3`}>Read More</a>
+              </motion.div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* 06 VISIT */}
+        <section id="visit" className="w-full scroll-mt-16 border-t border-border/40 px-6 py-20 md:py-28">
+          <div className="mx-auto max-w-[1200px]">
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={stagger} className="flex flex-col items-start gap-10 md:flex-row md:gap-16">
+              <motion.div variants={fadeInUp} className="flex w-full flex-col md:w-5/12">
+                <p className={eyebrow}>06</p>
+                <h2 className="mb-6 font-serif text-4xl tracking-[-0.01em] md:text-5xl">Visit Us</h2>
+                <p className="mb-1 font-serif text-lg">Lunar Bakery, Pop-up</p>
+                <p className="mb-1 text-sm leading-[1.45] text-primary/60">2948 Folsom St</p>
+                <p className="mb-8 text-sm leading-[1.45] text-primary/60">San Francisco, CA 94110</p>
+                <p className="mb-2 text-sm leading-[1.45] text-primary/60">
+                  We operate as a pop-up with no permanent storefront. Follow <a href={IG} target="_blank" rel="noopener noreferrer" className="underline hover:text-accent">@lunarbakerysf</a> for upcoming locations and dates.
+                </p>
+                <div className="mt-8"><a href={MAP} target="_blank" rel="noopener noreferrer" className={`${btnLine} px-8 py-3`}>Get Directions</a></div>
+              </motion.div>
+              <motion.div variants={fadeInUp} className="w-full md:w-7/12">
+                <div className="w-full overflow-hidden border border-border/40" style={{ height: 300 }}>
+                  <iframe title="Lunar Bakery location" src="https://www.google.com/maps?q=2948+Folsom+St,+San+Francisco,+CA+94110&output=embed"
+                    width="100%" height="300" style={{ border: 0, filter: "grayscale(40%) contrast(1.05)" }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+                </div>
+              </motion.div>
+            </motion.div>
+          </div>
+        </section>
+      </main>
+      <Footer />
     </div>
+  );
+}
+
+// The products and prices here come from the dashboard's Products tab, so a price
+// change or a sold-out box shows up on the homepage too.
+function OrderSection() {
+  const s = useStore();
+  const sync = useSyncStatus();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const list = s.products.map((p) => ({ ...p, on: p.sizes.filter((z) => z.on) })).filter((p) => p.on.length);
+  const ready = mounted && sync !== "loading";
+  return (
+    <section id="order" className="w-full scroll-mt-16 border-t border-border/40 bg-primary px-6 py-20 text-primary-foreground md:py-28">
+      <div className="mx-auto max-w-[1200px]">
+        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={stagger} className="flex flex-col items-start gap-10 md:flex-row md:gap-16">
+          <motion.div variants={fadeInUp} className="w-full shrink-0 md:w-5/12">
+            <p className="mb-3 font-mono text-xs font-medium uppercase tracking-[0.08em] text-primary-foreground/50">04</p>
+            <h2 className="mb-4 font-serif text-4xl tracking-[-0.01em] md:text-5xl">Order for pickup</h2>
+            <p className="mb-8 max-w-sm text-[15px] leading-[1.5] text-primary-foreground/70">
+              Choose your boxes, a day and a time. Baked the morning you collect, and we text you to confirm. Pay when you pick up.
+            </p>
+            <a href="/order" className={`${btn} bg-primary-foreground text-primary hover:bg-primary-foreground/90`}>Start an order »</a>
+            <p className="mt-6 text-sm text-primary-foreground/60">
+              Custom cake or catering? <a href="mailto:lunarbakerysf@gmail.com?subject=Custom%20cake" className="underline underline-offset-4 hover:text-primary-foreground">Email us</a>
+            </p>
+          </motion.div>
+          <motion.div variants={fadeInUp} className="w-full md:w-7/12">
+            {!ready ? (
+              <div className="space-y-px">{Array.from({ length: 4 }, (_, i) => <div key={i} className="h-24 bg-primary-foreground/5" />)}</div>
+            ) : (
+              <ul className="stagger divide-y divide-primary-foreground/15 border-y border-primary-foreground/15">
+                {list.map((p) => (
+                  <li key={p.id}>
+                    <a href="/order" className="group flex items-center gap-5 py-4">
+                      {p.photo ? <img src={p.photo} alt="" loading="lazy" className="h-16 w-16 shrink-0 object-cover" /> : <span className="h-16 w-16 shrink-0 bg-primary-foreground/10" />}
+                      <span className="flex-1">
+                        <span className="block font-serif text-2xl leading-tight">{p.name}</span>
+                        <span className="text-sm text-primary-foreground/60">Boxes of {p.on.map((z) => z.pieces).join(", ")}</span>
+                      </span>
+                      <span className="text-right">
+                        <span className="block font-mono text-[11px] uppercase tracking-[0.1em] text-primary-foreground/50">from</span>
+                        <span className="font-serif text-xl">{money(Math.min(...p.on.map((z) => z.price)))}</span>
+                      </span>
+                    </a>
+                  </li>
+                ))}
+                {!list.length && <li className="py-6 text-primary-foreground/70">Everything is sold out right now. Follow us on Instagram for the next drop.</li>}
+              </ul>
+            )}
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
   );
 }

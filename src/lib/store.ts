@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { applyOp, type Op } from "./ops";
 
 export type Size = { id: string; pieces: number; code: string; price: number; on: boolean };
 export type Product = { id: string; name: string; photo?: string | undefined; sizes: Size[] };
@@ -19,7 +20,7 @@ export type Order = {
 export type State = { products: Product[]; orders: Order[]; done: Record<string, boolean>; closed: Record<string, boolean> };
 
 export const DAILY_LIMIT = 400;
-const KEY = "lunar-orders-v2";
+const KEY = "lunar-orders-v3";
 
 export const iso = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
@@ -46,10 +47,10 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 
 const sizes = (p: string, list: [number, number][]): Size[] => list.map(([pieces, price]) => ({ id: uid(), pieces, code: `${p}x${pieces}`, price, on: true }));
 const seedProducts = (): Product[] => [
-  { id: uid(), name: "Pastel de Nata", sizes: sizes("n", [[6, 30], [12, 56], [24, 105]]) },
-  { id: uid(), name: "Kouign-Amann", sizes: sizes("k", [[6, 36], [12, 68], [24, 128]]) },
-  { id: uid(), name: "Kouign with Gold", sizes: sizes("g", [[6, 42], [12, 80], [24, 150]]) },
-  { id: uid(), name: "Natas & Kouigns", sizes: sizes("m", [[12, 62]]) },
+  { id: uid(), name: "Pastel de Nata", photo: "/images/hero-natas.jpg", sizes: sizes("n", [[6, 30], [12, 56], [24, 105]]) },
+  { id: uid(), name: "Kouign-Amann", photo: "/images/kouign-tray.jpg", sizes: sizes("k", [[6, 36], [12, 68], [24, 128]]) },
+  { id: uid(), name: "Kouign with Gold", photo: "/images/kouign-gold.jpg", sizes: sizes("g", [[6, 42], [12, 80], [24, 150]]) },
+  { id: uid(), name: "Natas & Kouigns", photo: "/images/natas-kouigns.jpg", sizes: sizes("m", [[12, 62]]) },
 ];
 
 function seedOrders(): Order[] {
@@ -82,7 +83,7 @@ function seedOrders(): Order[] {
   });
 }
 
-function seed(): State {
+export function seed(): State {
   const orders = seedOrders();
   const done: Record<string, boolean> = {};
   const today = iso(new Date());
@@ -91,55 +92,107 @@ function seed(): State {
 }
 
 /*
- * Sync. Every page (dashboard and order page) reads and writes the same saved copy.
- * When one tab changes it, the others hear about it straight away through the
- * browser's "storage" event and a BroadcastChannel, then re-read it.
- * Orders that arrive this way are remembered in `fresh` so the board can animate them in.
+ * Sync.
+ * Live mode: the site has a database (DATABASE_URL on Vercel). Every device reads and
+ * writes the same shop data through /api/lunar, and checks for news every few seconds.
+ * Local mode: no database yet. Data lives in this browser only, and tabs in the same
+ * browser still update each other instantly. The site picks the mode by itself.
+ * Orders that arrive from elsewhere are announced through onArrive so the board can animate them.
  */
+export type SyncStatus = "loading" | "live" | "local" | "offline";
 let state: State | null = null;
+let version = 0;
+let status: SyncStatus = "loading";
 const listeners = new Set<() => void>();
-export const fresh = new Set<string>();
+const statusListeners = new Set<() => void>();
 const freshListeners = new Set<(ids: string[]) => void>();
 export const onArrive = (fn: (ids: string[]) => void) => { freshListeners.add(fn); return () => { freshListeners.delete(fn); }; };
 
 function read(): State | null {
   try { const s = localStorage.getItem(KEY); return s ? (JSON.parse(s) as State) : null; } catch { return null; }
 }
+function cache() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ } }
 function load(): State {
   if (state) return state;
   if (typeof window === "undefined") return (state = seed());
   state = read() ?? seed();
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ }
+  cache();
   return state;
 }
 export const getState = () => load();
 const emit = () => listeners.forEach((l) => l());
+function setStatus(s: SyncStatus) { if (s !== status) { status = s; statusListeners.forEach((l) => l()); } }
 
-let channel: BroadcastChannel | null = null;
-function pull() {
-  const before = new Set((state ?? load()).orders.map((o) => o.id));
-  const next = read();
-  if (!next) return;
+// Swap in a newer copy and announce any orders we had not seen.
+function replace(next: State) {
+  const before = new Set(load().orders.map((o) => o.id));
   state = next;
-  const added = next.orders.filter((o) => !before.has(o.id)).map((o) => o.id);
-  added.forEach((id) => fresh.add(id));
+  cache();
   emit();
+  const added = next.orders.filter((o) => !before.has(o.id)).map((o) => o.id);
   if (added.length) freshListeners.forEach((f) => f(added));
 }
+
+let channel: BroadcastChannel | null = null;
+async function fetchState(first = false) {
+  try {
+    const r = await fetch(`/api/lunar${first ? "" : `?v=${version}`}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    const d = (await r.json()) as { enabled: boolean; same?: boolean; state?: State; version?: number };
+    if (!d.enabled) { setStatus("local"); return; }
+    if (!d.same && d.state) { version = d.version ?? version; first ? ((state = d.state), cache(), emit()) : replace(d.state); }
+    setStatus("live");
+  } catch {
+    // No server answer (for example a plain static preview). Before we have ever been live, treat it as local mode.
+    setStatus(status === "live" || status === "offline" ? "offline" : "local");
+  }
+}
 if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => { if (e.key === KEY) pull(); });
-  try { channel = new BroadcastChannel("lunar-orders"); channel.onmessage = () => pull(); } catch { channel = null; }
+  window.addEventListener("storage", (e) => { if (e.key === KEY && status !== "live") { const n = read(); if (n) replace(n); } });
+  try { channel = new BroadcastChannel("lunar-orders"); channel.onmessage = () => { if (status === "live") void fetchState(); else { const n = read(); if (n) replace(n); } }; } catch { channel = null; }
+  void fetchState(true);
+  setInterval(() => { if ((status === "live" || status === "offline") && document.visibilityState === "visible") void fetchState(); }, 3000);
+  window.addEventListener("focus", () => { if (status === "live" || status === "offline") void fetchState(); });
 }
 
-export function setState(fn: (s: State) => State) {
-  state = fn(load());
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ }
+let queue: Promise<unknown> = Promise.resolve();
+/** Make a change. Shows on screen straight away, then is saved for every device. */
+export function dispatch(op: Op): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = applyOp(load(), op);
+  if ("error" in res) return Promise.resolve({ ok: false, error: res.error });
+  state = res.state;
+  cache();
   emit();
-  channel?.postMessage(1);
+  if (status !== "live" && status !== "offline") { channel?.postMessage(1); return Promise.resolve({ ok: true }); }
+  // Live: send changes one after another so they arrive in the order they were made.
+  const send = async (): Promise<{ ok: true } | { ok: false; error: string }> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await fetch("/api/lunar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op }) });
+        const d = (await r.json()) as { state?: State; version?: number; error?: string };
+        if (d.state) { version = d.version ?? version; state = d.state; cache(); emit(); } else void fetchState(); // put the screen back to what is really saved
+        setStatus("live");
+        channel?.postMessage(1);
+        return d.error ? { ok: false, error: d.error } : { ok: true };
+      } catch {
+        setStatus("offline");
+        await new Promise((ok) => setTimeout(ok, 800 * (attempt + 1)));
+      }
+    }
+    void fetchState();
+    return { ok: false, error: "No connection. Your change was not saved, please try again." };
+  };
+  const p = queue.then(send, send);
+  queue = p;
+  return p;
 }
+
 const serverSnap = seed();
 export function useStore() {
   return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, load, () => serverSnap);
+}
+export function useSyncStatus() {
+  return useSyncExternalStore((l) => { statusListeners.add(l); return () => statusListeners.delete(l); }, () => status, () => "loading" as SyncStatus);
 }
 
 export function dayPiecesOf(s: State, date: string) {

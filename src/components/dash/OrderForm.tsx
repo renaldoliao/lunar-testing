@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DAILY_LIMIT, dayPiecesOf, iso, money, orderBooked, orderPieces, parse, setState, sizeIndex, uid, useStore, weekDays, type Order } from "@/lib/store";
+import { DAILY_LIMIT, dayPiecesOf, iso, money, orderBooked, orderPieces, parse, dispatch, sizeIndex, uid, useStore, weekDays, type Order } from "@/lib/store";
 import { ItemPicker, TimeChips } from "./Pickers";
 import { toast } from "./Toast";
 
@@ -37,25 +37,22 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
   const save = () => {
     if (!check()) return;
     const o = build(!!initial?.pending);
-    setState((x) => ({ ...x, orders: initial ? x.orders.map((y) => (y.id === o.id ? o : y)) : [...x.orders, o] }));
-    toast(initial ? `Saved ${o.name}'s order` : `Added ${o.name}, ${fmtDay(o.date)}`);
     onDone();
+    void dispatch(initial ? { t: "update", order: o } : { t: "add", order: o }).then((r) => toast(r.ok ? (initial ? `Saved ${o.name}'s order` : `Added ${o.name}, ${fmtDay(o.date)}`) : r.error));
   };
   const confirmIt = () => {
     if (!check()) return;
     const o = build(false);
-    setState((x) => ({ ...x, orders: x.orders.map((y) => (y.id === o.id ? o : y)) }));
-    toast(`Confirmed ${o.name}${o.text ? ", text on its way" : ""}`);
     onDone();
+    void dispatch({ t: "update", order: o }).then((r) => toast(r.ok ? `Confirmed ${o.name}${o.text ? ", text on its way" : ""}` : r.error));
   };
   const del = () => {
     if (!initial) return;
     if (!sure) return setSure(true);
-    setState((x) => ({ ...x, orders: x.orders.filter((y) => y.id !== initial.id) }));
-    toast(`Deleted ${initial.name}'s order`);
     onDone();
+    void dispatch({ t: "delete", id: initial.id }).then((r) => toast(r.ok ? `Deleted ${initial.name}'s order` : r.error));
   };
-  const label = "mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground";
+  const label = "mb-2 block text-xs font-mono font-medium uppercase tracking-[0.08em] text-muted-foreground";
   const input = "w-full border-b-2 border-border bg-transparent py-1.5 text-lg outline-none focus:border-primary";
 
   return (
@@ -73,7 +70,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
             return (
               <button key={k} type="button" onClick={() => setD(k)} className={`press py-1.5 text-center ${sel ? "a-chip bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-muted"}`}>
                 <div className="text-xs opacity-75">{x.toLocaleDateString("en-US", { weekday: "short" })}</div>
-                <div className={`text-lg font-bold ${k === today ? "underline decoration-2 underline-offset-2" : ""}`}>{x.getDate()}</div>
+                <div className={`text-lg font-semibold ${k === today ? "underline decoration-2 underline-offset-2" : ""}`}>{x.getDate()}</div>
               </button>
             );
           })}
@@ -101,7 +98,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
         <ItemPicker products={products} items={items} onChange={setItems} showCodes />
         <div className="mt-2 flex justify-between text-sm">
           <span className="text-muted-foreground">{pcs} pieces · {money(total)}</span>
-          <span className={dayLoad > DAILY_LIMIT ? "font-bold text-destructive" : "text-muted-foreground"}>{dayLoad} of {DAILY_LIMIT} for the day</span>
+          <span className={dayLoad > DAILY_LIMIT ? "font-semibold text-destructive" : "text-muted-foreground"}>{dayLoad} of {DAILY_LIMIT} for the day</span>
         </div>
       </div>
 
@@ -111,17 +108,17 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
 
       <label className="flex cursor-pointer gap-3">
         <input type="checkbox" checked={text} onChange={(e) => setText(e.target.checked)} className="mt-1 h-5 w-5 accent-primary" />
-        <span className="text-sm"><span className="font-bold text-foreground">Text a confirmation and pickup reminder</span><br /><span className="text-muted-foreground">Ask them first. Tick this only if they say yes.</span></span>
+        <span className="text-sm"><span className="font-semibold text-foreground">Text a confirmation and pickup reminder</span><br /><span className="text-muted-foreground">Ask them first. Tick this only if they say yes.</span></span>
       </label>
 
       <div className="sticky bottom-0 -mx-6 mt-2 flex items-center gap-4 border-t border-border bg-card px-6 py-4">
         {err && <p key={err} className="a-rise absolute -top-9 left-6 bg-destructive px-2 py-1 text-sm text-destructive-foreground">{err}</p>}
         {initial?.pending
-          ? <button onClick={confirmIt} className="press bg-primary px-5 py-3 font-bold text-primary-foreground hover:opacity-90">Confirm order</button>
-          : <button onClick={save} className="press bg-primary px-5 py-3 font-bold text-primary-foreground hover:opacity-90">Save order</button>}
+          ? <button onClick={confirmIt} className="press bg-primary px-5 py-3 font-semibold text-primary-foreground hover:opacity-90">Confirm order</button>
+          : <button onClick={save} className="press bg-primary px-5 py-3 font-semibold text-primary-foreground hover:opacity-90">Save order</button>}
         {initial?.pending && <button onClick={save} className="press text-sm underline">Save, confirm later</button>}
         {!initial?.pending && <button onClick={onDone} className="press underline">Cancel</button>}
-        {initial && <button onClick={del} className={`press ml-auto text-sm ${sure ? "bg-destructive px-3 py-2 font-bold text-destructive-foreground" : "text-destructive underline"}`}>{sure ? "Tap again to delete" : "Delete"}</button>}
+        {initial && <button onClick={del} className={`press ml-auto text-sm ${sure ? "bg-destructive px-3 py-2 font-semibold text-destructive-foreground" : "text-destructive underline"}`}>{sure ? "Tap again to delete" : "Delete"}</button>}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { DAILY_LIMIT, downloadCsv, fmtTime, iso, mondayOf, money, orderBooked, orderPieces, parse, setState, sizeIndex, useStore, weekDays, type Order } from "@/lib/store";
+import { DAILY_LIMIT, downloadCsv, fmtTime, iso, mondayOf, money, orderBooked, orderPieces, parse, dispatch, sizeIndex, useStore, weekDays, type Order } from "@/lib/store";
 import { Drawer } from "./Drawer";
 import { OrderForm } from "./OrderForm";
+import { toast } from "./Toast";
 
 type Panel = { kind: "write"; date: string; order?: Order | undefined } | { kind: "bake"; date: string } | { kind: "numbers" } | null;
 const WEEK = 7 * 864e5;
@@ -40,7 +41,7 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
   const pending = s.orders.filter((o) => o.pending).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const toggle = (id: string) => {
     setPicked((p) => new Set(p).add(id));
-    setState((x) => ({ ...x, done: { ...x.done, [id]: !x.done[id] } }));
+    void dispatch({ t: "done", id, v: !s.done[id] }).then((r) => { if (!r.ok) toast(r.error); });
   };
   const go = (n: number) => { if (n === week) return; setDir(n > week ? "from-right" : "from-left"); setPicked(new Set()); setWeek(n); };
   const open = (o: Order) => { go(weekOf(o.date)); setPanel({ kind: "write", date: o.date, order: o }); };
@@ -71,12 +72,12 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
       )}
 
       <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <button onClick={() => go(week - 1)} className="press flex items-center gap-1 justify-self-start py-2 font-bold text-foreground"><ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Last week</span></button>
+        <button onClick={() => go(week - 1)} className="press flex items-center gap-1 justify-self-start py-2 font-semibold text-foreground"><ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Last week</span></button>
         <div key={`w${week}`} className="a-fade text-center">
           <div className="font-serif text-2xl leading-none text-foreground">{short(first)} to {short(last)}</div>
           <button onClick={() => go(0)} className={`press mt-1 text-sm ${week ? "text-foreground underline underline-offset-4" : "text-muted-foreground"}`}>{week ? `${sub}, back to this week` : sub}</button>
         </div>
-        <button onClick={() => go(week + 1)} className="press flex items-center gap-1 justify-self-end py-2 font-bold text-foreground"><span className="hidden sm:inline">Next week</span> <ChevronRight className="h-4 w-4" /></button>
+        <button onClick={() => go(week + 1)} className="press flex items-center gap-1 justify-self-end py-2 font-semibold text-foreground"><span className="hidden sm:inline">Next week</span> <ChevronRight className="h-4 w-4" /></button>
       </div>
 
       <div key={`g${week}`} className={`grid grid-cols-1 overflow-hidden border border-primary bg-card sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 ${dir}`}>
@@ -87,7 +88,7 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
               <button onClick={() => setPanel({ kind: "bake", date: k })} className="border-b-2 border-primary px-3 py-3 text-left hover:bg-secondary active:bg-muted">
                 <div className={`inline-block font-serif text-xl text-foreground ${isToday ? "border-b-2 border-accent" : ""}`}>{d.toLocaleDateString("en-US", { weekday: "long" })}</div>
                 <div className="mt-0.5 flex items-center gap-2 text-sm">
-                  <span className={pcs > DAILY_LIMIT ? "font-bold text-destructive" : "text-muted-foreground"}>{short(d)} · {pcs} pc</span>
+                  <span className={pcs > DAILY_LIMIT ? "font-semibold text-destructive" : "text-muted-foreground"}>{short(d)} · {pcs} pc</span>
                   {closed && <span className="rounded-full border border-accent px-2 text-xs text-foreground">closed online</span>}
                 </div>
                 <div className="mt-2 h-1 bg-secondary"><div className={`growx h-full ${pcs > DAILY_LIMIT ? "bg-destructive" : "bg-accent"}`} style={{ width: `${Math.min(100, (pcs / DAILY_LIMIT) * 100)}%` }} /></div>
@@ -102,12 +103,12 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
                       <div role="button" tabIndex={0} onClick={() => (o.pending ? open(o) : toggle(o.id))} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
                         className="body cursor-pointer px-3 py-2.5 hover:bg-secondary active:bg-muted">
                         <div className="flex items-center gap-2">
-                          <span className={`whitespace-nowrap px-1.5 text-sm font-bold ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
-                          {o.pending ? <span className="text-xs font-bold uppercase tracking-[0.12em] text-foreground">new, confirm</span>
+                          <span className={`whitespace-nowrap px-1.5 font-mono text-[13px] font-medium ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
+                          {o.pending ? <span className="text-xs font-mono font-medium uppercase tracking-[0.08em] text-foreground">new, confirm</span>
                             : <span className="text-xs text-muted-foreground">{o.source === "online" ? "online" : "by hand"} · {orderPieces(o, idx)} pc</span>}
                           <button onClick={(e) => { e.stopPropagation(); open(o); }} className="press ml-auto text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">edit</button>
                         </div>
-                        <div className="strike font-hand text-2xl font-bold leading-tight text-foreground">{o.name}</div>
+                        <div className="strike font-hand text-2xl font-medium leading-tight text-foreground">{o.name}</div>
                         {o.items.map((i, n) => <div key={n} className="strike font-hand text-lg leading-tight text-muted-foreground">{i.qty} x {i.code}</div>)}
                         {o.phone && <div className="text-xs text-muted-foreground">{o.phone}</div>}
                         {o.note && <div className="note-circle mt-1">{o.note}</div>}
@@ -116,7 +117,7 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
                   );
                 })}
                 <button onClick={() => setPanel({ kind: "write", date: k })} className="block w-full px-3 py-2 text-left text-muted-foreground hover:bg-secondary hover:text-foreground">+ write an order</button>
-                <button onClick={() => setState((x) => ({ ...x, closed: { ...x.closed, [k]: !x.closed[k] } }))} className="block w-full px-3 pb-3 text-left text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+                <button onClick={() => void dispatch({ t: "closed", date: k, v: !closed }).then((r) => toast(r.ok ? (closed ? "Reopened to online orders" : "Closed to online orders") : r.error))} className="block w-full px-3 pb-3 text-left text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
                   {closed ? "Reopen this day to online orders" : "Close this day to online orders"}
                 </button>
               </div>
@@ -188,7 +189,7 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
           ))}
         </ul>
         {list.length === 0 && <p className="mt-6 text-muted-foreground">Nothing booked for this day yet.</p>}
-        <button onClick={onWrite} className="press mt-6 bg-primary px-5 py-3 font-bold text-primary-foreground hover:opacity-90">Write an order</button>
+        <button onClick={onWrite} className="press mt-6 bg-primary px-5 py-3 font-semibold text-primary-foreground hover:opacity-90">Write an order</button>
       </div>
     );
   }

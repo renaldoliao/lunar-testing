@@ -16,9 +16,9 @@ function H({ children }: { children: ReactNode }) {
 function Table({ head, rows, bar }: { head: string[]; rows: ReactNode[][]; bar?: number[] }) {
   return (
     <table className="w-full text-sm">
-      <thead><tr className="border-b border-border text-muted-foreground">{head.map((h, i) => <th key={i} className={`py-2 font-bold ${i ? "text-right" : "text-left"}`}>{h}</th>)}{bar && <th className="w-1/3" />}</tr></thead>
+      <thead><tr className="border-b border-border text-muted-foreground">{head.map((h, i) => <th key={i} className={`py-2 font-semibold ${i ? "text-right" : "text-left"}`}>{h}</th>)}{bar && <th className="w-1/3" />}</tr></thead>
       <tbody>{rows.map((r, i) => (
-        <tr key={i}>{r.map((c, j) => <td key={j} className={`py-2 ${j ? "text-right" : "text-left font-bold text-foreground"}`}>{c}</td>)}
+        <tr key={i}>{r.map((c, j) => <td key={j} className={`py-2 ${j ? "text-right" : "text-left font-semibold text-foreground"}`}>{c}</td>)}
           {bar && <td className="pl-3"><div className="h-2.5 bg-secondary"><div className="growx h-full bg-primary" style={{ width: `${(bar[i] ?? 0) * 100}%`, animationDelay: `${Math.min(i, 8) * 0.03}s` }} /></div></td>}
         </tr>
       ))}</tbody>
@@ -32,7 +32,7 @@ function Donut({ parts, center, label }: { parts: { name: string; v: number }[];
   return (
     <div className="flex items-center gap-6">
       <div className="spin-in relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(${stops})` }}>
-        <div className="absolute inset-5 flex flex-col items-center justify-center rounded-full bg-card"><span className="font-bold text-foreground">{center}</span><span className="text-[10px] text-muted-foreground">{label}</span></div>
+        <div className="absolute inset-5 flex flex-col items-center justify-center rounded-full bg-card"><span className="font-semibold text-foreground">{center}</span><span className="text-[10px] text-muted-foreground">{label}</span></div>
       </div>
       <ul className="flex-1 space-y-1.5 text-sm">
         {parts.map((p, i) => <li key={p.name} className="flex items-center gap-2"><span className="h-3.5 w-3.5 border border-primary" style={{ background: SHADES[i % 4] }} /><span className="flex-1 text-foreground">{p.name}</span><b>{Math.round((p.v / total) * 100)}%</b></li>)}
@@ -99,7 +99,7 @@ export function HistoryView() {
         <div className="mb-4 flex items-center gap-2"><span className="mr-2 text-sm text-muted-foreground">Chart</span>{(["Orders", "Pieces", "Booked"] as Metric[]).map((m) => <Pill key={m} on={metric === m} onClick={() => setMetric(m)}>{m}</Pill>)}</div>
         <div className="flex h-36 items-end gap-2">
           {[...weeks].reverse().map(([w, l]) => { const v = val(sum(l)); return (
-            <div key={w} className="flex w-20 flex-col items-center"><span className="font-bold text-foreground">{metric === "Booked" ? money(v) : v}</span><div className="grow w-full bg-primary" style={{ height: `${(v / wmax) * 90}px` }} /><span className="mt-1 text-xs text-muted-foreground">{short(w)}</span></div>
+            <div key={w} className="flex w-20 flex-col items-center"><span className="font-semibold text-foreground">{metric === "Booked" ? money(v) : v}</span><div className="grow w-full bg-primary" style={{ height: `${(v / wmax) * 90}px` }} /><span className="mt-1 text-xs text-muted-foreground">{short(w)}</span></div>
           ); })}
         </div>
         <p className="mt-3 text-sm text-muted-foreground">Each bar is a week, labelled with its Monday.</p>
@@ -124,7 +124,7 @@ export function HistoryView() {
         <section>
           <H>By weekday</H>
           <div className="flex h-32 items-end gap-2">
-            {byWd.map((d) => <div key={d.w} className="flex flex-1 flex-col items-center"><span className="font-bold text-foreground">{d.n}</span><div className="grow w-full bg-primary" style={{ height: `${(d.n / dmax) * 80}px` }} /><span className="mt-1 text-xs text-muted-foreground">{d.w.slice(0, 3)}</span></div>)}
+            {byWd.map((d) => <div key={d.w} className="flex flex-1 flex-col items-center"><span className="font-semibold text-foreground">{d.n}</span><div className="grow w-full bg-primary" style={{ height: `${(d.n / dmax) * 80}px` }} /><span className="mt-1 text-xs text-muted-foreground">{d.w.slice(0, 3)}</span></div>)}
           </div>
           <div className="mt-6"><Table head={["", "Orders", "Pieces", "Booked"]} rows={byWd.map((d) => [d.w, d.n, d.p, money(d.b)])} /></div>
         </section>
@@ -141,15 +141,15 @@ export function HistoryView() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or phone" className="w-64 border-b-2 border-primary bg-transparent py-1 outline-none" />
           <span className="text-sm text-muted-foreground">{regulars.length} customers</span>
         </div>
-        <Table head={["", "Orders", "Pieces", "Booked", "Last order"]} rows={regulars.map((r) => [<button key={r.key} onClick={() => setCust(r.key)} className="press font-hand text-xl font-bold underline-offset-2 hover:underline">{r.name}</button>, r.n, r.p, money(r.b), short(r.last)])} />
+        <Table head={["", "Orders", "Pieces", "Booked", "Last order"]} rows={regulars.map((r) => [<button key={r.key} onClick={() => setCust(r.key)} className="press font-hand text-xl font-medium underline-offset-2 hover:underline">{r.name}</button>, r.n, r.p, money(r.b), short(r.last)])} />
       </section>
       <Drawer open={!!cust} onClose={() => setCust(null)}>
         {cust && (() => { const l = (s.orders.filter((o) => custKey(o) === cust)).sort((a, b) => b.date.localeCompare(a.date)); const x = sum(l); return (
           <div>
-            <h2 className="font-hand text-4xl font-bold text-foreground">{l[0]?.name}</h2>
+            <h2 className="font-hand text-4xl font-medium text-foreground">{l[0]?.name}</h2>
             <p className="text-muted-foreground">{l[0]?.phone}</p>
             <p className="mt-2 text-foreground">{x.n} orders · {x.p} pieces · {money(x.b)}</p>
-            <ul className="mt-4">{l.map((o) => <li key={o.id} className="border-t border-border py-3"><div className="font-bold text-foreground">{parse(o.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · {fmtTime(o.time)}</div><div className="font-hand text-lg text-muted-foreground">{o.items.map((i) => `${i.qty} x ${i.code}`).join(", ")}</div>{o.note && <div className="note-circle mt-1">{o.note}</div>}</li>)}</ul>
+            <ul className="mt-4">{l.map((o) => <li key={o.id} className="border-t border-border py-3"><div className="font-semibold text-foreground">{parse(o.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · {fmtTime(o.time)}</div><div className="font-hand text-lg text-muted-foreground">{o.items.map((i) => `${i.qty} x ${i.code}`).join(", ")}</div>{o.note && <div className="note-circle mt-1">{o.note}</div>}</li>)}</ul>
           </div>
         ); })()}
       </Drawer>

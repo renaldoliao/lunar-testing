@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DAILY_LIMIT, TIMES, dayPiecesOf, fmtTime, iso, money, orderBooked, orderPieces, parse, setState, sizeIndex, uid, useStore, type Item, type Order } from "@/lib/store";
+import { DAILY_LIMIT, TIMES, dayPiecesOf, fmtTime, iso, money, orderBooked, orderPieces, parse, dispatch, sizeIndex, uid, useStore, useSyncStatus, type Item, type Order } from "@/lib/store";
 import { ItemPicker, TimeChips } from "@/components/dash/Pickers";
+import { Header } from "@/components/site/Header";
+import { Footer } from "@/components/site/Footer";
 
 export const Route = createFileRoute("/order")({
   head: () => ({
@@ -27,6 +29,7 @@ const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMin
 
 function OrderPage() {
   const s = useStore();
+  const sync = useSyncStatus();
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
   const [items, setItems] = useState<Item[]>([]);
@@ -67,35 +70,33 @@ function OrderPage() {
     if (dayState(date)) return setErr("That day just filled up. Please pick another.");
     setSending(true);
     const o: Order = { id: uid(), date, time, name: name.trim(), phone: phone.trim(), items, note: note.trim(), text, source: "online", pending: true, placed: Date.now() };
-    setTimeout(() => {
-      setState((x) => ({ ...x, orders: [...x.orders, o] }));
-      setPlaced(o); setSending(false);
+    const started = Date.now();
+    void dispatch({ t: "add", order: o }).then(async (r) => {
+      // Hold the "Sending" state for a beat so the change never feels like a flicker.
+      await new Promise((ok) => setTimeout(ok, Math.max(0, 450 - (Date.now() - started))));
+      setSending(false);
+      if (!r.ok) return setErr(r.error);
+      setPlaced(o);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 450);
+    });
   };
   const again = () => { setPlaced(null); setItems([]); setDate(""); setTime(""); setNote(""); };
 
-  if (!ready) return <OrderSkeleton />;
+  if (!ready || sync === "loading") return <OrderSkeleton />;
 
-  const label = "mb-3 block text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground";
+  const label = "mb-3 block text-xs font-mono font-medium uppercase tracking-[0.08em] text-muted-foreground";
   const input = "w-full border-b-2 border-border bg-transparent py-2 text-lg outline-none focus:border-primary";
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="flex items-center justify-between px-5 py-5 sm:px-10">
-        <a href="/order" onClick={(e) => { if (placed) { e.preventDefault(); again(); } }} className="leading-none">
-          <div className="font-sans text-2xl font-bold tracking-[0.12em] text-brand-blue">LUNAR</div>
-          <div className="mt-1 text-[9px] tracking-[0.22em] text-accent">ARTISAN BAKED GOODS</div>
-        </a>
-        <p className="hidden font-serif italic text-muted-foreground sm:block">French pastry, Taiwanese soul.</p>
-      </header>
+      <Header onOrderPage />
 
       {placed ? (
         <Thanks o={placed} onAgain={again} />
       ) : (
-        <main className="grid gap-10 px-5 pb-40 sm:px-10 lg:grid-cols-[1fr_380px] lg:gap-16 lg:pb-20">
+        <main className="mx-auto grid max-w-[1200px] gap-10 px-6 pb-24 pt-12 lg:grid-cols-[1fr_360px] lg:gap-16 lg:pt-16">
           <div className="min-w-0">
-            <h1 className="a-arrive max-w-[12ch] font-serif text-[56px] leading-[0.92] tracking-[-0.02em] text-foreground sm:text-[96px]">Order for pickup</h1>
+            <h1 className="a-arrive max-w-[12ch] font-serif text-[56px] font-medium leading-[0.92] tracking-[-0.03em] text-foreground sm:text-[88px]">Order for pickup</h1>
             <p className="a-arrive mt-5 max-w-[46ch] text-lg leading-[1.45] text-muted-foreground" style={{ animationDelay: ".2s" }}>
               Baked the morning you collect. Choose your boxes, a day and a time, and we will text to confirm.
             </p>
@@ -146,11 +147,11 @@ function OrderPage() {
 
           {/* The slip: your order written out the way the bakery will see it. */}
           <aside className="hidden lg:block">
-            <div className="sticky top-6">
+            <div className="sticky top-24">
               <Slip lines={lines} pcs={pcs} total={total} date={date} time={time} name={name} note={note} />
               {err && <p key={err} className="a-rise mt-3 text-sm text-destructive">{err}</p>}
-              <button onClick={place} disabled={sending} className="press mt-4 w-full rounded-full bg-primary py-4 text-lg font-bold text-primary-foreground hover:opacity-90 disabled:opacity-70">
-                {sending ? "Sending..." : pcs ? `Place order · ${money(total)}` : "Place order"}
+              <button onClick={place} disabled={sending} className="press mt-4 w-full bg-accent py-4 font-mono font-medium uppercase tracking-[0.08em] text-accent-foreground hover:bg-accent/90 disabled:opacity-70">
+                {sending ? "Sending..." : pcs ? `Place order · ${money(total)} »` : "Place order »"}
               </button>
               <p className="mt-3 text-center text-xs text-muted-foreground">Pay when you collect. Nothing is charged online.</p>
             </div>
@@ -166,17 +167,12 @@ function OrderPage() {
               <div key={pcs} className={`font-serif text-2xl text-foreground ${pcs ? "a-chip" : ""}`}>{money(total)}</div>
               <div className="text-xs text-muted-foreground">{pcs ? `${pcs} pieces` : "No boxes yet"}{date && time !== "" ? `, ${parse(date).toLocaleDateString("en-US", { weekday: "short" })} ${fmtTime(time)}` : ""}</div>
             </div>
-            <button onClick={place} disabled={sending} className="press rounded-full bg-primary px-6 py-3 font-bold text-primary-foreground disabled:opacity-70">{sending ? "Sending..." : "Place order"}</button>
+            <button onClick={place} disabled={sending} className="press bg-accent px-5 py-3 font-mono text-sm font-medium uppercase tracking-[0.08em] text-accent-foreground disabled:opacity-70">{sending ? "Sending..." : "Place order »"}</button>
           </div>
         </div>
       )}
 
-      <footer className={`flex flex-wrap gap-x-6 gap-y-2 border-t border-border px-5 py-6 text-sm text-muted-foreground sm:px-10 ${placed ? "" : "mb-24 lg:mb-0"}`}>
-        <span>Lunar Bakery</span>
-        <a href="/terms" className="underline underline-offset-2 hover:text-foreground">Terms</a>
-        <a href="/privacy" className="underline underline-offset-2 hover:text-foreground">Privacy</a>
-        <a href="/" className="ml-auto hover:text-foreground">Staff</a>
-      </footer>
+      <div className={placed ? "" : "pb-20 lg:pb-0"}><Footer compact /></div>
     </div>
   );
 }
@@ -186,16 +182,16 @@ function Slip({ lines, pcs, total, date, time, name, note, stamp }: { lines: Lin
   return (
     <div className="ruled relative border border-primary bg-card px-5 pb-5 pt-4">
       <div className="flex items-baseline justify-between border-b-2 border-primary pb-2">
-        <span className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Your order</span>
+        <span className="text-xs font-mono font-medium uppercase tracking-[0.08em] text-muted-foreground">Your order</span>
         <span className="text-sm text-muted-foreground">{pcs} pc</span>
       </div>
       <div className="min-h-[136px] pt-2">
-        {date && time !== "" && <div className="a-rise"><span className="bg-primary px-1.5 text-sm font-bold text-primary-foreground">{fmtTime(time)}</span> <span className="text-sm text-foreground">{parse(date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</span></div>}
-        {name.trim() && <div className="font-hand text-2xl font-bold leading-tight text-foreground">{name.trim()}</div>}
+        {date && time !== "" && <div className="a-rise"><span className="bg-primary px-1.5 text-sm font-semibold text-primary-foreground">{fmtTime(time)}</span> <span className="text-sm text-foreground">{parse(date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</span></div>}
+        {name.trim() && <div className="font-hand text-2xl font-medium leading-tight text-foreground">{name.trim()}</div>}
         {lines.map((l) => (
           <div key={l.code} className="a-rise flex items-baseline justify-between font-hand text-xl leading-[34px] text-foreground">
             <span>{l.qty} x {l.m!.product.name}, {l.m!.size.pieces}</span>
-            <span className="font-sans text-sm text-muted-foreground">{money(l.qty * l.m!.size.price)}</span>
+            <span className="text-sm text-muted-foreground">{money(l.qty * l.m!.size.price)}</span>
           </div>
         ))}
         {!lines.length && <p className="font-hand text-xl leading-[34px] text-muted-foreground">Add a box to start.</p>}
@@ -205,7 +201,7 @@ function Slip({ lines, pcs, total, date, time, name, note, stamp }: { lines: Lin
         <span className="text-sm text-muted-foreground">Total, paid at pickup</span>
         <span key={total} className="a-chip font-serif text-3xl text-foreground">{money(total)}</span>
       </div>
-      {stamp && <div className="a-popin absolute -right-3 -top-4 rotate-[8deg] rounded-full border-2 border-accent bg-card px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-foreground" style={{ animationDelay: ".45s" }}>Received</div>}
+      {stamp && <div className="a-popin absolute -right-3 -top-4 rotate-[8deg] rounded-full border-2 border-accent bg-card px-3 py-1 text-xs font-mono font-medium uppercase tracking-[0.08em] text-foreground" style={{ animationDelay: ".45s" }}>Received</div>}
     </div>
   );
 }
@@ -216,16 +212,16 @@ function Thanks({ o, onAgain }: { o: Order; onAgain: () => void }) {
   const live = s.orders.find((x) => x.id === o.id) ?? o;
   const lines = live.items.map((i) => ({ ...i, m: idx.get(i.code) })).filter((l) => l.m);
   return (
-    <main className="grid gap-12 px-5 pb-20 pt-6 sm:px-10 lg:grid-cols-[1fr_380px] lg:gap-16">
+    <main className="mx-auto grid max-w-[1200px] gap-12 px-6 pb-24 pt-12 lg:grid-cols-[1fr_360px] lg:gap-16 lg:pt-16">
       <div>
-        <h1 className="a-arrive font-serif text-[56px] leading-[0.92] tracking-[-0.02em] text-foreground sm:text-[96px]">Thank you, {live.name.split(" ")[0]}.</h1>
+        <h1 className="a-arrive font-serif text-[56px] font-medium leading-[0.92] tracking-[-0.03em] text-foreground sm:text-[88px]">Thank you, {live.name.split(" ")[0]}.</h1>
         <p className="a-arrive mt-6 max-w-[44ch] text-lg leading-[1.45] text-muted-foreground" style={{ animationDelay: ".2s" }}>
           {live.pending
             ? <>Your order is with the bakers. We will {live.text ? "text" : "call"} {live.phone} to confirm, usually within the hour.</>
             : <>Confirmed. See you {parse(live.date).toLocaleDateString("en-US", { weekday: "long" })} at {fmtTime(live.time)}.</>}
         </p>
-        {!live.pending && <p className="a-rise mt-4 inline-block border-2 border-accent px-3 py-1 text-sm font-bold text-foreground">The bakery has confirmed your order</p>}
-        <button onClick={onAgain} className="press a-arrive mt-10 rounded-full border-2 border-primary px-6 py-3 font-bold text-foreground hover:bg-primary hover:text-primary-foreground" style={{ animationDelay: ".3s" }}>Place another order</button>
+        {!live.pending && <p className="a-rise mt-4 inline-block border-2 border-accent px-3 py-1 text-sm font-semibold text-foreground">The bakery has confirmed your order</p>}
+        <button onClick={onAgain} className="press a-arrive mt-10 border border-primary px-8 py-3 font-mono text-sm font-medium uppercase tracking-[0.08em] text-foreground hover:bg-primary hover:text-primary-foreground" style={{ animationDelay: ".3s" }}>Place another order</button>
       </div>
       <div className="a-arrive" style={{ animationDelay: ".15s" }}>
         <Slip lines={lines} pcs={orderPieces(live, idx)} total={orderBooked(live, idx)} date={live.date} time={live.time} name={live.name} note={live.note} stamp />
@@ -236,12 +232,14 @@ function Thanks({ o, onAgain }: { o: Order; onAgain: () => void }) {
 
 function OrderSkeleton() {
   return (
-    <div className="min-h-screen bg-background px-5 py-5 sm:px-10" aria-busy="true" aria-label="Loading">
-      <div className="skel h-9 w-28" />
+    <div className="min-h-screen bg-background" aria-busy="true" aria-label="Loading">
+      <Header onOrderPage />
+      <div className="px-5 sm:px-10">
       <div className="mt-10 grid gap-16 lg:grid-cols-[1fr_380px]">
         <div><div className="skel h-20 w-3/4" /><div className="skel mt-4 h-5 w-1/2" />
           <div className="mt-14 space-y-6">{Array.from({ length: 4 }, (_, i) => <div key={i} className="skel h-20 w-full" />)}</div></div>
         <div className="skel hidden h-80 lg:block" />
+      </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "./Toast";
-import { setState, uid, useStore, type Product } from "@/lib/store";
+import { dispatch, uid, useStore, type Product } from "@/lib/store";
 
 export function ProductsView() {
   const s = useStore();
@@ -21,8 +21,8 @@ export function ProductsView() {
         </div>
         <div className="flex gap-2">
           {dirty && <button onClick={() => setDraft(s.products)} className="press a-rise px-4 py-3 underline">Discard</button>}
-          {dirty && <button onClick={() => { setState((x) => ({ ...x, products: draft })); toast("Saved. The order page shows it now."); }} className="press a-rise bg-accent px-5 py-3 font-bold text-accent-foreground">Save changes</button>}
-          <button onClick={() => setDraft([...draft, { id: uid(), name: "New product", sizes: [{ id: uid(), pieces: 6, code: "xx6", price: 30, on: true }] }])} className="press bg-primary px-5 py-3 font-bold text-primary-foreground hover:opacity-90">Add a product</button>
+          {dirty && <button onClick={() => void dispatch({ t: "products", products: draft }).then((r) => toast(r.ok ? "Saved. The order page shows it now." : r.error))} className="press a-rise bg-accent px-5 py-3 font-semibold text-accent-foreground">Save changes</button>}
+          <button onClick={() => setDraft([...draft, { id: uid(), name: "New product", sizes: [{ id: uid(), pieces: 6, code: "xx6", price: 30, on: true }] }])} className="press bg-primary px-5 py-3 font-semibold text-primary-foreground hover:opacity-90">Add a product</button>
         </div>
       </div>
       <div className="stagger grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -35,9 +35,9 @@ export function ProductsView() {
             <div className="p-4">
               <div className="flex items-center gap-2">
                 <input value={p.name} onChange={(e) => upd(p.id, (x) => ({ ...x, name: e.target.value }))} className="w-full bg-transparent font-serif text-2xl text-foreground outline-none" />
-                <button onClick={() => (sure === p.id ? (setDraft(draft.filter((x) => x.id !== p.id)), setSure(null)) : setSure(p.id))} className={`press shrink-0 text-xs ${sure === p.id ? "bg-destructive px-2 py-1 font-bold text-destructive-foreground" : "text-muted-foreground underline"}`}>{sure === p.id ? "Tap again" : "remove"}</button>
+                <button onClick={() => (sure === p.id ? (setDraft(draft.filter((x) => x.id !== p.id)), setSure(null)) : setSure(p.id))} className={`press shrink-0 text-xs ${sure === p.id ? "bg-destructive px-2 py-1 font-semibold text-destructive-foreground" : "text-muted-foreground underline"}`}>{sure === p.id ? "Tap again" : "remove"}</button>
               </div>
-              <div className="mt-2 grid grid-cols-[48px_1fr_80px_40px_20px] gap-2 border-b border-border pb-1 text-xs font-bold text-muted-foreground"><span>Pieces</span><span>Code</span><span>Price</span><span /><span /></div>
+              <div className="mt-2 grid grid-cols-[48px_1fr_80px_40px_20px] gap-2 border-b border-border pb-1 text-xs font-semibold text-muted-foreground"><span>Pieces</span><span>Code</span><span>Price</span><span /><span /></div>
               {p.sizes.map((z) => {
                 const set = (patch: Partial<typeof z>) => upd(p.id, (x) => ({ ...x, sizes: x.sizes.map((y) => (y.id === z.id ? { ...y, ...patch } : y)) }));
                 return (
