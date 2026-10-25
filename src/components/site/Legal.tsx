@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
+import { ChatBubble } from "./ChatBubble";
 
 export function Legal({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -13,6 +14,7 @@ export function Legal({ title, children }: { title: string; children: ReactNode 
         <a href="/order" className="press mt-12 inline-block bg-primary px-8 py-3 text-sm font-mono font-medium uppercase tracking-[0.08em] text-primary-foreground hover:bg-primary/90">Order for pickup</a>
       </main>
       <Footer compact />
+      <ChatBubble />
     </div>
   );
 }

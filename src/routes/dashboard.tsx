@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getState, onArrive, parse, fmtTime, useStore, useSyncStatus } from "@/lib/store";
+import { checkStaffKey, getState, onArrive, onMessages, parse, fmtTime, setStaffKey, useStaffDenied, useStaffReady, useStaffSync, useStore, useSyncStatus } from "@/lib/store";
+import { Inbox } from "@/components/dash/Inbox";
+import { onOpenOrder } from "@/components/dash/bus";
 import { Toaster, toast } from "@/components/dash/Toast";
 import { WeekView } from "@/components/dash/WeekView";
 import { HistoryView } from "@/components/dash/HistoryView";
@@ -43,10 +45,11 @@ function Index() {
   const [ready, setReady] = useState(false);
   useEffect(() => { try { setUser(localStorage.getItem("lunar-user")); } catch { /* private mode */ } setReady(true); }, []);
   const sync = useSyncStatus();
+  const denied = useStaffDenied();
+  const signOut = () => { try { localStorage.removeItem("lunar-user"); localStorage.removeItem("lunar-key"); } catch { /* ignore */ } setUser(null); };
   if (!ready || (user && sync === "loading")) return <BoardSkeleton />;
-  return user
-    ? <Dashboard onLogout={() => { try { localStorage.removeItem("lunar-user"); } catch { /* ignore */ } setUser(null); }} />
-    : <Login onLogin={(u) => { try { localStorage.setItem("lunar-user", u); } catch { /* ignore */ } setUser(u); }} />;
+  if (user && !denied) return <Dashboard onLogout={signOut} />;
+  return <Login expired={!!user && denied} onLogin={(u) => { try { localStorage.setItem("lunar-user", u); } catch { /* ignore */ } setUser(u); }} />;
 }
 
 function BoardSkeleton() {
@@ -64,63 +67,55 @@ function BoardSkeleton() {
   );
 }
 
-function Login({ onLogin }: { onLogin: (u: string) => void }) {
-  const [mode, setMode] = useState<"in" | "up">("in");
-  const [u, setU] = useState("");
+// One staff password, checked by the server, so customers' details stay private.
+function Login({ onLogin, expired }: { onLogin: (u: string) => void; expired: boolean }) {
+  const [u, setU] = useState("admin");
   const [p, setP] = useState("");
-  const [code, setCode] = useState("");
   const [show, setShow] = useState(false);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(expired ? "Please sign in again." : "");
   const [out, setOut] = useState(false);
-  const users = (): Record<string, string> => { try { return { admin: "lunar123", ...JSON.parse(localStorage.getItem("lunar-users") || "{}") }; } catch { return { admin: "lunar123" }; } };
-  const enter = (name: string) => { setOut(true); setTimeout(() => onLogin(name), 380); };
-  const submit = (e: React.FormEvent) => {
+  const [checking, setChecking] = useState(false);
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (out) return;
-    if (mode === "in") return users()[u.trim()] === p ? enter(u.trim()) : setErr("That username or password isn't right.");
-    if (!u.trim()) return setErr("Choose a username.");
-    if (p.length < 8) return setErr("Passwords need 8 or more characters.");
-    if (code.trim().toUpperCase() !== "LUNAR") return setErr("That join code isn't right. Ask the owner for it.");
-    if (users()[u.trim()]) return setErr("That username is taken.");
-    try { localStorage.setItem("lunar-users", JSON.stringify({ ...JSON.parse(localStorage.getItem("lunar-users") || "{}"), [u.trim()]: p })); } catch { /* ignore */ }
-    enter(u.trim());
+    if (out || checking) return;
+    setChecking(true);
+    const ok = await checkStaffKey(p);
+    setChecking(false);
+    if (!ok) return setErr("That password isn't right.");
+    setStaffKey(p);
+    setOut(true);
+    setTimeout(() => onLogin(u.trim() || "staff"), 380);
   };
-  const label = "text-xs font-mono font-medium uppercase tracking-[0.08em] text-muted-foreground";
+  const label = "font-mono text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground";
   const input = "mt-1 w-full border-b-2 border-border bg-transparent py-2 text-lg outline-none focus:border-primary";
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
-      <form onSubmit={submit} className={`a-arrive lockcard w-full max-w-[400px] border border-primary bg-card shadow-[6px_6px_0_var(--border)] ${out ? "out" : ""}`}>
+      <form onSubmit={(e) => void submit(e)} className={`a-arrive lockcard w-full max-w-[400px] border border-primary bg-card ${out ? "out" : ""}`}>
         <div className="flex flex-col items-center border-b border-primary bg-secondary px-8 py-10">
           <Logo big />
           <p className="mt-4 font-serif italic text-accent">French pastry, Taiwanese soul.</p>
         </div>
-        <div key={mode} className="a-fade space-y-5 p-8">
-          <h1 className="font-serif text-2xl text-foreground">{mode === "in" ? "Orders dashboard" : "Create a login"}</h1>
-          <label className="block"><span className={label}>{mode === "in" ? "Username" : "Choose a username"}</span><input autoComplete="username" value={u} onChange={(e) => { setU(e.target.value); setErr(""); }} className={input} /></label>
-          <label className="block"><span className={label}>{mode === "in" ? "Password" : "Choose a password, 8 or more characters"}</span>
-            <div className="flex items-end gap-3"><input autoComplete={mode === "in" ? "current-password" : "new-password"} type={show ? "text" : "password"} value={p} onChange={(e) => { setP(e.target.value); setErr(""); }} className={input} /><button type="button" onClick={() => setShow(!show)} className="press pb-2 text-sm text-muted-foreground underline">{show ? "Hide" : "Show"}</button></div>
+        <div className="space-y-5 p-8">
+          <h1 className="font-serif text-2xl text-foreground">Orders dashboard</h1>
+          <label className="block"><span className={label}>Name</span><input autoComplete="username" value={u} onChange={(e) => { setU(e.target.value); setErr(""); }} className={input} /></label>
+          <label className="block"><span className={label}>Staff password</span>
+            <div className="flex items-end gap-3"><input autoComplete="current-password" type={show ? "text" : "password"} value={p} onChange={(e) => { setP(e.target.value); setErr(""); }} className={input} /><button type="button" onClick={() => setShow(!show)} className="press pb-2 text-sm text-muted-foreground underline">{show ? "Hide" : "Show"}</button></div>
           </label>
-          {mode === "up" && <label className="block"><span className={label}>Join code from the owner</span><input value={code} onChange={(e) => setCode(e.target.value)} className={input} /></label>}
           {err && <p key={err} className="a-rise text-sm text-destructive">{err}</p>}
-          <button className="press w-full bg-primary py-3 font-semibold text-primary-foreground hover:opacity-90">{mode === "in" ? "Sign in" : "Create login"}</button>
-          {mode === "in" ? (
-            <>
-              <p className="text-sm text-muted-foreground">New here? <button type="button" onClick={() => { setMode("up"); setErr(""); }} className="press text-foreground underline">Create a login</button></p>
-              <p className="border-t border-border pt-4 text-sm text-muted-foreground">Demo login: <span className="code-chip">admin</span> and <span className="code-chip">lunar123</span></p>
-            </>
-          ) : (
-            <button type="button" onClick={() => { setMode("in"); setErr(""); }} className="press text-sm text-foreground underline">Back to sign in</button>
-          )}
+          <button disabled={checking} className="press w-full bg-primary py-3 font-mono text-sm font-medium uppercase tracking-[0.08em] text-primary-foreground hover:opacity-90 disabled:opacity-70">{checking ? "Checking..." : "Sign in"}</button>
+          <p className="border-t border-border pt-4 text-sm text-muted-foreground">Demo password: <span className="code-chip">lunar123</span></p>
         </div>
       </form>
     </main>
   );
 }
 
-const TABS = ["Week", "History", "Products"] as const;
+const TABS = ["Week", "Messages", "History", "Products"] as const;
 type Tab = (typeof TABS)[number];
 function Dashboard({ onLogout }: { onLogout: () => void }) {
+  useStaffSync();
   const s = useStore();
+  const ready = useStaffReady();
   const [tab, setTab] = useState<Tab>("Week");
   const [shown, setShown] = useState<Tab>("Week");
   const [leaving, setLeaving] = useState(false);
@@ -135,7 +130,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     const b = nav.current?.querySelector<HTMLButtonElement>(`[data-t="${tabRef.current}"]`);
     if (b) setBar((o) => (o.x === b.offsetLeft && o.w === b.offsetWidth ? o : { x: b.offsetLeft, w: b.offsetWidth }));
   };
-  useLayoutEffect(place, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(place, [tab, ready]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     window.addEventListener("resize", place);
     document.fonts?.ready.then(place);
@@ -149,41 +144,53 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     setLeaving(true);
     setTimeout(() => { setShown(t); setLeaving(false); window.scrollTo(0, 0); }, 140);
   };
+  // "Open this order" from the inbox: go to the week board, which opens it.
+  useEffect(() => onOpenOrder(() => { if (tabRef.current !== "Week") switchTab("Week"); }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A new online order from the order page lands here live.
+  // New orders and new messages from customers land here live.
   useEffect(() => onArrive((ids) => {
     const got = getState().orders.filter((x) => ids.includes(x.id) && x.pending);
     if (got.length === 1) toast(`New online order: ${got[0]!.name}, ${parse(got[0]!.date).toLocaleDateString("en-US", { weekday: "short" })} ${fmtTime(got[0]!.time)}`);
     else if (got.length > 1) toast(`${got.length} new online orders`);
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  }), []);
+  useEffect(() => onMessages((n) => {
+    const t = Object.values(getState().threads ?? {}).sort((a, b) => b.at - a.at)[0];
+    toast(n === 1 && t ? `New message from ${t.name}` : `${n} new messages`);
+  }), []);
 
-  const waiting = s.orders.filter((o) => o.pending).length;
-  useEffect(() => { document.title = waiting ? `(${waiting}) Lunar Orders` : "Orders Dashboard · Lunar Bakery"; }, [waiting]);
+  const waiting = s.orders.filter((o) => o.pending && !o.cancelled).length;
+  const unread = Object.values(s.threads ?? {}).reduce((n, t) => n + (t.msgs.length > t.staffSeen && t.msgs[t.msgs.length - 1]?.from === "customer" ? t.msgs.slice(t.staffSeen).filter((m) => m.from === "customer").length : 0), 0);
+  useEffect(() => { const n = waiting + unread; document.title = n ? `(${n}) Lunar Orders` : "Orders Dashboard · Lunar Bakery"; }, [waiting, unread]);
 
+  if (!ready) return <BoardSkeleton />;
+  const link = "press font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground";
   return (
     <div className="a-arrive min-h-screen bg-background px-5 pb-12">
       <header className="flex flex-wrap items-center gap-x-10 gap-y-3 py-4">
         <Logo />
-        <nav ref={nav} className="relative flex gap-2">
-          {TABS.map((t) => (
-            <button key={t} data-t={t} onClick={() => switchTab(t)} aria-pressed={tab === t}
-              className={`relative px-3 py-2 font-semibold ${tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-              {t}{t === "Week" && waiting > 0 && <span className="a-chip ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs text-accent-foreground">{waiting}</span>}
-            </button>
-          ))}
+        <nav ref={nav} className="relative flex gap-1">
+          {TABS.map((t) => {
+            const n = t === "Week" ? waiting : t === "Messages" ? unread : 0;
+            return (
+              <button key={t} data-t={t} onClick={() => switchTab(t)} aria-pressed={tab === t}
+                className={`relative px-3 py-2 font-medium ${tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                {t}{n > 0 && <span key={n} className="a-chip ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[11px] text-accent-foreground">{n}</span>}
+              </button>
+            );
+          })}
           <span className="tabbar" style={{ width: bar.w - 24, transform: `translateX(${bar.x + 12}px)` }} />
         </nav>
-        <div className="ml-auto flex items-center gap-6 font-semibold text-foreground">
+        <div className="ml-auto flex items-center gap-5">
           <SyncBadge />
-          <a href="/" target="_blank" rel="noreferrer" className="press hidden text-sm underline-offset-4 hover:underline md:inline">Website</a>
-          <a href="/order" target="_blank" rel="noreferrer" className="press rounded-full border-2 border-primary px-4 py-1.5 text-sm hover:bg-primary hover:text-primary-foreground">Open order page</a>
-          <button onClick={() => setNumbers(true)} className={`press transition-opacity ${tab === "Week" ? "" : "pointer-events-none opacity-0"}`} tabIndex={tab === "Week" ? 0 : -1}>Week numbers</button>
-          <button onClick={onLogout} className="press">Sign out</button>
+          <a href="/" target="_blank" rel="noreferrer" className={`${link} hidden md:inline`}>Website ↗</a>
+          <a href="/order" target="_blank" rel="noreferrer" className={link}>Order page ↗</a>
+          <button onClick={onLogout} className={link}>Sign out</button>
         </div>
       </header>
       <div className={leaving ? "tab-out" : ""}>
-        <div key={shown} className={`tab-in ${shown === "Week" ? "" : "pt-8"}`}>
-          {shown === "Week" && <WeekView numbersOpen={numbers} setNumbersOpen={setNumbers} />}
+        <div key={shown} className={`tab-in ${shown === "Week" ? "" : "pt-6"}`}>
+          {shown === "Week" && <WeekView numbersOpen={numbers} setNumbersOpen={setNumbers} onMessages={() => switchTab("Messages")} />}
+          {shown === "Messages" && <Inbox />}
           {shown === "History" && <HistoryView />}
           {shown === "Products" && <ProductsView />}
         </div>

@@ -174,18 +174,18 @@
   color: var(--foreground);
 }
 @utility note-circle {
-  display: inline-block;
-  border: 2px solid var(--accent);
-  border-radius: 9999px;
-  padding: 0.05rem 0.7rem;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-left: 2px solid var(--accent);
+  padding: 0.05rem 0 0.05rem 0.55rem;
   font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 0.95rem;
-  line-height: 1.2;
-  color: var(--foreground);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: color-mix(in oklab, var(--foreground) 85%, transparent);
 }
 @utility ruled {
-  background-image: repeating-linear-gradient(to bottom, transparent 0 33px, var(--border) 33px 34px);
+  background-image: none;
 }
 
 /*
@@ -276,10 +276,15 @@
 .lockcard.out { transform: translateY(-14px) scale(.985); opacity: 0; }
 
 /* Lunar's voice: names and items set in Lora italic instead of handwriting */
-.font-hand { font-style: italic; }
+.font-hand { font-style: normal; }
 
 /* Highlighter, as on the Baklava board: a swipe of colour across the time, name or note */
 :root { --marker: #f5d78e; }
 .mark { cursor: pointer; background-image: linear-gradient(var(--marker), var(--marker)); background-repeat: no-repeat; background-position: left center; background-size: 0% 100%; transition: background-size .34s var(--ease-bar), color .2s ease .08s; }
 .mark.marked { background-size: 100% 100%; color: #532c14 !important; }
 .note-circle.mark.marked { background-size: 100% 100%; }
+
+/* Cancelled and declined orders stay on the board for the record, quietly */
+.ent.gone .body { opacity: .5; }
+.ent.gone .strike { text-decoration: line-through; text-decoration-thickness: 1px; }
+.soon-dot { animation: l-dot 2s ease-out infinite; }

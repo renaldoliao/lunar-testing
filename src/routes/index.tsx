@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { motion, type Variants } from "framer-motion";
 import { Header } from "@/components/site/Header";
 import { Footer } from "@/components/site/Footer";
-import { money, useStore, useSyncStatus } from "@/lib/store";
+import { DAILY_LIMIT, dayHours, fmtTime, iso, money, parse, useCustomerSync, usePublic, useSyncStatus } from "@/lib/store";
+import { ChatBubble } from "@/components/site/ChatBubble";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -189,12 +190,47 @@ function Home() {
                   <iframe title="Lunar Bakery location" src="https://www.google.com/maps?q=2948+Folsom+St,+San+Francisco,+CA+94110&output=embed"
                     width="100%" height="300" style={{ border: 0, filter: "grayscale(40%) contrast(1.05)" }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
                 </div>
+                <UpcomingDays />
               </motion.div>
             </motion.div>
           </div>
         </section>
       </main>
       <Footer />
+      <ChatBubble />
+    </div>
+  );
+}
+
+// The next pickup days, straight from the bakery's own schedule in the dashboard.
+function UpcomingDays() {
+  useCustomerSync();
+  const pub = usePublic();
+  const sync = useSyncStatus();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted || sync === "loading") return <div className="mt-8 space-y-px">{Array.from({ length: 3 }, (_, i) => <div key={i} className="skel h-14" />)}</div>;
+  const days: string[] = [];
+  const d = new Date(); d.setHours(12, 0, 0, 0);
+  while (days.length < 6) { const k = iso(d); if (d.getDay() !== 0 && !pub.closed[k]) days.push(k); d.setDate(d.getDate() + 1); }
+  return (
+    <div className="mt-8">
+      <p className="mb-2 font-mono text-xs font-medium uppercase tracking-[0.08em] text-primary/60">Upcoming pickups</p>
+      <ul className="stagger divide-y divide-border border-y border-border">
+        {days.map((k) => {
+          const h = dayHours(pub.days[k]);
+          const full = (pub.load[k] ?? 0) >= DAILY_LIMIT - 6;
+          return (
+            <li key={k}>
+              <a href="/order" className="group flex items-baseline gap-4 py-3">
+                <span className="w-28 shrink-0 font-serif text-lg">{parse(k).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+                <span className="flex-1 text-sm text-primary/70">{h.place} · {fmtTime(h.from)} to {fmtTime(h.to)}</span>
+                <span className={`font-mono text-[11px] uppercase tracking-[0.08em] ${full ? "text-primary/40" : "text-accent group-hover:underline"}`}>{full ? "Full" : "Order »"}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -202,7 +238,8 @@ function Home() {
 // The products and prices here come from the dashboard's Products tab, so a price
 // change or a sold-out box shows up on the homepage too.
 function OrderSection() {
-  const s = useStore();
+  useCustomerSync();
+  const s = usePublic();
   const sync = useSyncStatus();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);

@@ -15,6 +15,8 @@ import { Route as OrderRouteImport } from './routes/order'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ApiLunarRouteImport } from './routes/api/lunar'
+import { Route as ApiShopRouteImport } from './routes/api/shop'
+import { Route as OIdRouteImport } from './routes/o.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +48,16 @@ const ApiLunarRoute = ApiLunarRouteImport.update({
   path: '/api/lunar',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiShopRoute = ApiShopRouteImport.update({
+  id: '/api/shop',
+  path: '/api/shop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OIdRoute = OIdRouteImport.update({
+  id: '/o/$id',
+  path: '/o/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +66,8 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/api/lunar': typeof ApiLunarRoute
+  '/api/shop': typeof ApiShopRoute
+  '/o/$id': typeof OIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +76,8 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/api/lunar': typeof ApiLunarRoute
+  '/api/shop': typeof ApiShopRoute
+  '/o/$id': typeof OIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,13 +87,30 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/api/lunar': typeof ApiLunarRoute
+  '/api/shop': typeof ApiShopRoute
+  '/o/$id': typeof OIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/dashboard' | '/order' | '/privacy' | '/terms' | '/api/lunar'
+    | '/'
+    | '/dashboard'
+    | '/order'
+    | '/privacy'
+    | '/terms'
+    | '/api/lunar'
+    | '/api/shop'
+    | '/o/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/order' | '/privacy' | '/terms' | '/api/lunar'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/order'
+    | '/privacy'
+    | '/terms'
+    | '/api/lunar'
+    | '/api/shop'
+    | '/o/$id'
   id:
     | '__root__'
     | '/'
@@ -86,6 +119,8 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/api/lunar'
+    | '/api/shop'
+    | '/o/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -95,6 +130,8 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
   ApiLunarRoute: typeof ApiLunarRoute
+  ApiShopRoute: typeof ApiShopRoute
+  OIdRoute: typeof OIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -141,6 +178,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLunarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/shop': {
+      id: '/api/shop'
+      path: '/api/shop'
+      fullPath: '/api/shop'
+      preLoaderRoute: typeof ApiShopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/o/$id': {
+      id: '/o/$id'
+      path: '/o/$id'
+      fullPath: '/o/$id'
+      preLoaderRoute: typeof OIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -151,6 +202,8 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
   ApiLunarRoute: ApiLunarRoute,
+  ApiShopRoute: ApiShopRoute,
+  OIdRoute: OIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

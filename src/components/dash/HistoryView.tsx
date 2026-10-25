@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { downloadCsv, fmtTime, iso, mondayOf, money, orderBooked, orderPieces, parse, sizeIndex, useStore, type Order } from "@/lib/store";
+import { itemsText, downloadCsv, fmtTime, iso, mondayOf, money, orderBooked, orderPieces, parse, sizeIndex, useStore, type Order } from "@/lib/store";
 import { Drawer } from "./Drawer";
 
 const RANGES = ["All time", "This month", "Last 4 weeks", "This week"] as const;
@@ -76,7 +76,7 @@ export function HistoryView() {
   const wmax = Math.max(1, ...weeks.map(([, l]) => val(sum(l))));
   const dmax = Math.max(1, ...byWd.map((d) => d.n));
 
-  const exportCsv = () => downloadCsv(`lunar-history-${range.toLowerCase().replace(/ /g, "-")}.csv`, [["Date", "Time", "Name", "Phone", "Items", "Pieces", "Booked", "Source", "Picked up"], ...orders.map((o) => [o.date, fmtTime(o.time), o.name, o.phone, o.items.map((i) => `${i.qty} x ${i.code}`).join("; "), P(o), B(o), o.source, s.done[o.id] ? "yes" : "no"])]);
+  const exportCsv = () => downloadCsv(`lunar-history-${range.toLowerCase().replace(/ /g, "-")}.csv`, [["Date", "Time", "Name", "Phone", "Items", "Pieces", "Booked", "Source", "Picked up"], ...orders.map((o) => [o.date, fmtTime(o.time), o.name, o.phone, itemsText(o, idx), P(o), B(o), o.source, s.done[o.id] ? "yes" : "no"])]);
 
   return (
     <div className="space-y-10 border border-primary bg-card p-6">
@@ -141,15 +141,15 @@ export function HistoryView() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or phone" className="w-64 border-b-2 border-primary bg-transparent py-1 outline-none" />
           <span className="text-sm text-muted-foreground">{regulars.length} customers</span>
         </div>
-        <Table head={["", "Orders", "Pieces", "Booked", "Last order"]} rows={regulars.map((r) => [<button key={r.key} onClick={() => setCust(r.key)} className="press font-hand text-xl font-medium underline-offset-2 hover:underline">{r.name}</button>, r.n, r.p, money(r.b), short(r.last)])} />
+        <Table head={["", "Orders", "Pieces", "Booked", "Last order"]} rows={regulars.map((r) => [<button key={r.key} onClick={() => setCust(r.key)} className="press font-serif text-lg font-medium underline-offset-4 hover:underline">{r.name}</button>, r.n, r.p, money(r.b), short(r.last)])} />
       </section>
       <Drawer open={!!cust} onClose={() => setCust(null)}>
         {cust && (() => { const l = (s.orders.filter((o) => custKey(o) === cust)).sort((a, b) => b.date.localeCompare(a.date)); const x = sum(l); return (
           <div>
-            <h2 className="font-hand text-4xl font-medium text-foreground">{l[0]?.name}</h2>
+            <h2 className="font-serif text-4xl font-medium text-foreground">{l[0]?.name}</h2>
             <p className="text-muted-foreground">{l[0]?.phone}</p>
             <p className="mt-2 text-foreground">{x.n} orders · {x.p} pieces · {money(x.b)}</p>
-            <ul className="mt-4">{l.map((o) => <li key={o.id} className="border-t border-border py-3"><div className="font-semibold text-foreground">{parse(o.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · {fmtTime(o.time)}</div><div className="font-hand text-lg text-muted-foreground">{o.items.map((i) => `${i.qty} x ${i.code}`).join(", ")}</div>{o.note && <div className="note-circle mt-1">{o.note}</div>}</li>)}</ul>
+            <ul className="mt-4">{l.map((o) => <li key={o.id} className="border-t border-border py-3"><div className="font-semibold text-foreground">{parse(o.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · {fmtTime(o.time)}</div><div className="text-[15px] text-muted-foreground">{itemsText(o, idx, ", ")}</div>{o.note && <div className="note-circle mt-1">{o.note}</div>}</li>)}</ul>
           </div>
         ); })()}
       </Drawer>

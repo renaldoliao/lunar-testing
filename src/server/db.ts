@@ -49,15 +49,17 @@ export async function readVersion(): Promise<number> {
   const r = await getPool().query(`SELECT version FROM lunar_store WHERE id = 1`);
   return Number(r.rows[0].version);
 }
-export async function writeOp(op: Op): Promise<{ state: State; version: number; error?: string }> {
+/** Lock the shop, apply one change, save. Two devices changing things at once never overwrite each other. */
+export async function mutate(fn: (s: State) => { state: State } | { error: string }): Promise<{ state: State; version: number; error?: string }> {
   await setup();
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
     const r = await client.query(`SELECT version, state FROM lunar_store WHERE id = 1 FOR UPDATE`);
     const cur = { version: Number(r.rows[0].version), state: r.rows[0].state as State };
-    const res = applyOp(cur.state, op);
+    const res = fn(cur.state);
     if ("error" in res) { await client.query("ROLLBACK"); return { ...cur, error: res.error }; }
+    if (res.state === cur.state) { await client.query("ROLLBACK"); return cur; }
     const version = cur.version + 1;
     await client.query(`UPDATE lunar_store SET version = $1, state = $2, updated_at = now() WHERE id = 1`, [version, JSON.stringify(res.state)]);
     await client.query("COMMIT");
@@ -69,3 +71,4 @@ export async function writeOp(op: Op): Promise<{ state: State; version: number; 
     client.release();
   }
 }
+export const writeOp = (op: Op) => mutate((s) => applyOp(s, op));

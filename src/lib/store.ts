@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { applyOp, type Op } from "./ops";
+import { applyCustomer, mineView, publicView, type COp } from "./shop";
 
 export type Size = { id: string; pieces: number; code: string; price: number; on: boolean };
 export type Product = { id: string; name: string; photo?: string | undefined; sizes: Size[] };
@@ -14,13 +15,36 @@ export type Order = {
   note: string;
   source: "online" | "by hand";
   text: boolean;
-  pending?: boolean; // online order the shop has not confirmed yet
-  placed?: number; // when it was placed, ms
+  pending?: boolean | undefined; // online order the shop has not confirmed yet
+  placed?: number | undefined; // when it was placed, ms
+  token?: string | undefined; // the customer's private key for following this order
+  ready?: boolean | undefined; // baked and waiting on the shelf
+  declined?: string | undefined; // the shop could not take it, with the reason
+  cancelled?: boolean | undefined; // the customer cancelled it
 };
-export type State = { products: Product[]; orders: Order[]; done: Record<string, boolean>; closed: Record<string, boolean> };
+export type Msg = { id: string; from: "customer" | "bakery"; text: string; at: number };
+export type Thread = { id: string; token: string; name: string; phone?: string | undefined; orderId?: string | undefined; msgs: Msg[]; staffSeen: number; custSeen: number; at: number };
+export type DayInfo = { place?: string | undefined; from?: number | undefined; to?: number | undefined };
+export type State = { products: Product[]; orders: Order[]; done: Record<string, boolean>; closed: Record<string, boolean>; days?: Record<string, DayInfo>; threads?: Record<string, Thread> };
+/** What anyone may see: the menu, open days, pop-up places and how full each day is. Never names or phone numbers. */
+export type PublicView = { products: Product[]; closed: Record<string, boolean>; days: Record<string, DayInfo>; load: Record<string, number> };
+/** What one customer may see: only their own orders and conversations. */
+export type MineOrder = Order & { picked: boolean };
+export type Mine = { orders: MineOrder[]; threads: Thread[] };
+
+export type OrderStatus = "pending" | "confirmed" | "ready" | "picked" | "declined" | "cancelled";
+export const statusOf = (o: Order, done: Record<string, boolean>): OrderStatus =>
+  o.cancelled ? "cancelled" : o.declined ? "declined" : o.pending ? "pending" : done[o.id] ? "picked" : o.ready ? "ready" : "confirmed";
+/** Status of a customer's own order, as they see it. */
+export const custStatus = (o: MineOrder): OrderStatus => statusOf(o, o.picked ? { [o.id]: true } : {});
+/** Cancelled and declined orders no longer use up the day's oven space. */
+export const isLive = (o: Order) => !o.cancelled && !o.declined;
+export const DEFAULT_PLACE = "2948 Folsom St, San Francisco";
+export const OPEN_FROM = 8 * 60, OPEN_TO = 18 * 60;
+export const dayHours = (d: DayInfo | undefined) => ({ from: d?.from ?? OPEN_FROM, to: d?.to ?? OPEN_TO, place: d?.place || DEFAULT_PLACE });
 
 export const DAILY_LIMIT = 400;
-const KEY = "lunar-orders-v3";
+const KEY = "lunar-orders-v4";
 
 export const iso = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
@@ -44,6 +68,7 @@ export const fmtTime = (min: number) => {
 export const TIMES = Array.from({ length: 21 }, (_, i) => 8 * 60 + i * 30);
 export const money = (n: number) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: n % 1 ? 2 : 0, minimumFractionDigits: n % 1 ? 2 : 0 });
 export const uid = () => Math.random().toString(36).slice(2, 10);
+export const secret = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 24);
 
 const sizes = (p: string, list: [number, number][]): Size[] => list.map(([pieces, price]) => ({ id: uid(), pieces, code: `${p}x${pieces}`, price, on: true }));
 const seedProducts = (): Product[] => [
@@ -88,122 +113,253 @@ export function seed(): State {
   const done: Record<string, boolean> = {};
   const today = iso(new Date());
   orders.forEach((o, i) => { if (o.date < today && i % 2 === 0) done[o.id] = true; });
-  return { products: seedProducts(), orders, done, closed: {} };
+  return { products: seedProducts(), orders, done, closed: {}, days: {}, threads: {} };
 }
 
 /*
- * Sync.
- * Live mode: the site has a database (DATABASE_URL on Vercel). Every device reads and
- * writes the same shop data through /api/lunar, and checks for news every few seconds.
- * Local mode: no database yet. Data lives in this browser only, and tabs in the same
- * browser still update each other instantly. The site picks the mode by itself.
- * Orders that arrive from elsewhere are announced through onArrive so the board can animate them.
+ * Sync, both ways.
+ * Live mode (a database is connected on Vercel): the dashboard reads and writes the whole shop
+ * through /api/lunar with the staff password. Customers talk to /api/shop, which only ever
+ * returns the menu, open days, and their own orders and messages. Every screen checks for news
+ * every few seconds, so a confirm, a reply or a new order shows up on the other side by itself.
+ * Local mode (no database yet): everything lives in this browser, and tabs update each other.
  */
 export type SyncStatus = "loading" | "live" | "local" | "offline";
-let state: State | null = null;
+type Res = { ok: true } | { ok: false; error: string };
+let state: State | null = null; // whole shop: local mode, or the dashboard in live mode
 let version = 0;
+let pub: PublicView | null = null; // live mode, customer pages
+let mine: Mine = { orders: [], threads: [] }; // live mode, customer pages
 let status: SyncStatus = "loading";
+let staffOn = false, custOn = false, staffDenied = false, staffLoaded = false;
 const listeners = new Set<() => void>();
 const statusListeners = new Set<() => void>();
 const freshListeners = new Set<(ids: string[]) => void>();
+const msgListeners = new Set<(n: number) => void>();
 export const onArrive = (fn: (ids: string[]) => void) => { freshListeners.add(fn); return () => { freshListeners.delete(fn); }; };
+/** Called with how many new customer messages just came in (dashboard side). */
+export const onMessages = (fn: (n: number) => void) => { msgListeners.add(fn); return () => { msgListeners.delete(fn); }; };
 
+const isBrowser = typeof window !== "undefined";
 function read(): State | null {
   try { const s = localStorage.getItem(KEY); return s ? (JSON.parse(s) as State) : null; } catch { return null; }
 }
-function cache() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ } }
+function cache() { if (status !== "live" && status !== "offline") try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ } }
 function load(): State {
   if (state) return state;
-  if (typeof window === "undefined") return (state = seed());
+  if (!isBrowser) return (state = seed());
   state = read() ?? seed();
-  cache();
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ }
   return state;
 }
 export const getState = () => load();
-const emit = () => listeners.forEach((l) => l());
-function setStatus(s: SyncStatus) { if (s !== status) { status = s; statusListeners.forEach((l) => l()); } }
+const emit = () => { derived = null; listeners.forEach((l) => l()); };
+function setStatus(s: SyncStatus) { if (s !== status) { status = s; emit(); statusListeners.forEach((l) => l()); } }
 
-// Swap in a newer copy and announce any orders we had not seen.
+const inbound = (s: State) => Object.values(s.threads ?? {}).reduce((n, t) => n + t.msgs.filter((m) => m.from === "customer").length, 0);
+// Swap in a newer copy and announce new orders and new messages.
 function replace(next: State) {
-  const before = new Set(load().orders.map((o) => o.id));
+  const prev = state;
+  const before = new Set((prev ?? next).orders.map((o) => o.id));
+  const msgsBefore = prev ? inbound(prev) : inbound(next);
   state = next;
   cache();
   emit();
   const added = next.orders.filter((o) => !before.has(o.id)).map((o) => o.id);
   if (added.length) freshListeners.forEach((f) => f(added));
+  const more = inbound(next) - msgsBefore;
+  if (more > 0) msgListeners.forEach((f) => f(more));
 }
 
+/* ---------- the customer's own key ring, kept on their device ---------- */
+type Key = { id: string; token: string };
+export type Me = { orders: Key[]; threads: Key[]; name?: string; phone?: string };
+const ME = "lunar-me";
+export function me(): Me {
+  if (!isBrowser) return { orders: [], threads: [] };
+  try { return { orders: [], threads: [], ...JSON.parse(localStorage.getItem(ME) || "{}") }; } catch { return { orders: [], threads: [] }; }
+}
+function saveMe(m: Me) { try { localStorage.setItem(ME, JSON.stringify(m)); } catch { /* ignore */ } emit(); }
+export function remember(kind: "orders" | "threads", k: Key, contact?: { name?: string | undefined; phone?: string | undefined }) {
+  const m = me();
+  if (!m[kind].some((x) => x.id === k.id)) m[kind] = [...m[kind], k].slice(-30);
+  if (contact?.name) m.name = contact.name;
+  if (contact?.phone) m.phone = contact.phone;
+  saveMe(m);
+}
+
+/* ---------- talking to the server ---------- */
 let channel: BroadcastChannel | null = null;
-async function fetchState(first = false) {
+const staffKey = () => { try { return sessionStorage.getItem("lunar-key") || localStorage.getItem("lunar-key") || ""; } catch { return ""; } };
+export function setStaffKey(k: string) { try { localStorage.setItem("lunar-key", k); } catch { /* ignore */ } staffDenied = false; }
+export const isStaffDenied = () => staffDenied;
+
+async function probe() {
   try {
-    const r = await fetch(`/api/lunar${first ? "" : `?v=${version}`}`, { cache: "no-store" });
+    const r = await fetch("/api/shop", { cache: "no-store" });
     if (!r.ok) throw new Error(String(r.status));
-    const d = (await r.json()) as { enabled: boolean; same?: boolean; state?: State; version?: number };
-    if (!d.enabled) { setStatus("local"); return; }
-    if (!d.same && d.state) { version = d.version ?? version; first ? ((state = d.state), cache(), emit()) : replace(d.state); }
+    const d = (await r.json()) as { enabled: boolean; view?: PublicView; version?: number };
+    if (!d.enabled) return setStatus("local");
+    if (d.view) pub = d.view;
     setStatus("live");
+    await tick(true);
   } catch {
-    // No server answer (for example a plain static preview). Before we have ever been live, treat it as local mode.
-    setStatus(status === "live" || status === "offline" ? "offline" : "local");
+    setStatus("local"); // no server at all, for example a static preview
   }
 }
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => { if (e.key === KEY && status !== "live") { const n = read(); if (n) replace(n); } });
-  try { channel = new BroadcastChannel("lunar-orders"); channel.onmessage = () => { if (status === "live") void fetchState(); else { const n = read(); if (n) replace(n); } }; } catch { channel = null; }
-  void fetchState(true);
-  setInterval(() => { if ((status === "live" || status === "offline") && document.visibilityState === "visible") void fetchState(); }, 3000);
-  // Coming back to a tab always re-checks for news, in case a message from another tab was missed.
+async function fetchStaff(force = false) {
+  const r = await fetch(`/api/lunar${force || !version ? "" : `?v=${version}`}`, { cache: "no-store", headers: { "x-lunar-key": staffKey() } });
+  if (r.status === 401) { staffDenied = true; emit(); return; }
+  if (!r.ok) throw new Error(String(r.status));
+  const d = (await r.json()) as { same?: boolean; state?: State; version?: number };
+  if (!d.same && d.state) { version = d.version ?? version; if (!staffLoaded || force) { staffLoaded = true; state = d.state; emit(); } else replace(d.state); }
+}
+let pubTick = 0;
+async function fetchCustomer(withPublic: boolean) {
+  const m = me();
+  if (withPublic) {
+    const r = await fetch("/api/shop", { cache: "no-store" });
+    const d = (await r.json()) as { view?: PublicView };
+    if (d.view) pub = d.view;
+  }
+  if (m.orders.length || m.threads.length) {
+    const r = await fetch("/api/shop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mine: { orders: m.orders, threads: m.threads } }) });
+    const d = (await r.json()) as Partial<Mine>;
+    mine = { orders: d.orders ?? [], threads: d.threads ?? [] };
+  }
+  emit();
+}
+let busy = false;
+async function tick(force = false) {
+  if (busy || (status !== "live" && status !== "offline")) return;
+  busy = true;
+  try {
+    if (staffOn) await fetchStaff(force);
+    if (custOn) await fetchCustomer(force || pubTick++ % 4 === 0);
+    if (status === "offline") setStatus("live");
+  } catch {
+    setStatus("offline");
+  } finally { busy = false; }
+}
+if (isBrowser) {
+  window.addEventListener("storage", (e) => { if ((e.key === KEY || e.key === ME) && status === "local") { const n = read(); if (n) replace(n); else emit(); } });
+  try { channel = new BroadcastChannel("lunar-orders"); channel.onmessage = () => { if (status === "local") { const n = read(); if (n) replace(n); } else void tick(); }; } catch { channel = null; }
+  void probe();
+  setInterval(() => { if (document.visibilityState === "visible") void tick(); }, 2000);
   const recheck = () => {
-    if (status === "live" || status === "offline") void fetchState();
-    else if (status === "local") { const n = read(); if (n && JSON.stringify(n) !== JSON.stringify(state)) replace(n); }
+    if (status === "local") { const n = read(); if (n && JSON.stringify(n) !== JSON.stringify(state)) replace(n); }
+    else void tick();
   };
   window.addEventListener("focus", recheck);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recheck(); });
 }
+/** Fetch a customer's own orders and messages straight away (after they open a link). */
+export function refreshCustomer() { if (isBrowser) setTimeout(() => void tick(true), 0); }
+/** The dashboard calls this: keep the whole shop in sync while it is open. */
+export function useStaffSync() {
+  if (isBrowser && !staffOn) { staffOn = true; void tick(true); }
+}
+/** Customer pages call this: keep the menu, open days and their own orders in sync. */
+export function useCustomerSync() {
+  if (isBrowser && !custOn) { custOn = true; void tick(true); }
+}
+export async function checkStaffKey(k: string): Promise<boolean> {
+  if (status !== "live" && status !== "offline") return k === "lunar123";
+  const r = await fetch("/api/lunar?v=-1", { headers: { "x-lunar-key": k } }).catch(() => null);
+  return !!r && r.ok;
+}
 
 let queue: Promise<unknown> = Promise.resolve();
-/** Make a change. Shows on screen straight away, then is saved for every device. */
-export function dispatch(op: Op): Promise<{ ok: true } | { ok: false; error: string }> {
+const serial = (fn: () => Promise<Res>) => { const p = queue.then(fn, fn); queue = p; return p; };
+
+/** A change made by the bakery. Shows at once, then is saved for every device. */
+export function dispatch(op: Op): Promise<Res> {
   const res = applyOp(load(), op);
   if ("error" in res) return Promise.resolve({ ok: false, error: res.error });
   state = res.state;
   cache();
   emit();
-  if (status !== "live" && status !== "offline") { channel?.postMessage(1); return Promise.resolve({ ok: true }); }
-  // Live: send changes one after another so they arrive in the order they were made.
-  const send = async (): Promise<{ ok: true } | { ok: false; error: string }> => {
+  if (status === "local" || status === "loading") { channel?.postMessage(1); return Promise.resolve({ ok: true }); }
+  return serial(async () => {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const r = await fetch("/api/lunar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op }) });
+        const r = await fetch("/api/lunar", { method: "POST", headers: { "content-type": "application/json", "x-lunar-key": staffKey() }, body: JSON.stringify({ op }) });
+        if (r.status === 401) { staffDenied = true; emit(); return { ok: false, error: "Please sign in again." }; }
         const d = (await r.json()) as { state?: State; version?: number; error?: string };
-        if (d.state) { version = d.version ?? version; state = d.state; cache(); emit(); } else void fetchState(); // put the screen back to what is really saved
+        if (d.state) { version = d.version ?? version; state = d.state; emit(); } else void tick(true);
         setStatus("live");
-        channel?.postMessage(1);
         return d.error ? { ok: false, error: d.error } : { ok: true };
       } catch {
         setStatus("offline");
         await new Promise((ok) => setTimeout(ok, 800 * (attempt + 1)));
       }
     }
-    void fetchState();
+    void tick(true);
     return { ok: false, error: "No connection. Your change was not saved, please try again." };
-  };
-  const p = queue.then(send, send);
-  queue = p;
-  return p;
+  });
 }
 
+/** A change made by a customer: placing an order, sending a message, cancelling. */
+export function custOp(op: COp): Promise<Res> {
+  if (status === "local" || status === "loading") {
+    const res = applyCustomer(load(), op, Date.now());
+    if ("error" in res) return Promise.resolve({ ok: false, error: res.error });
+    state = res.state;
+    cache();
+    emit();
+    channel?.postMessage(1);
+    return Promise.resolve({ ok: true });
+  }
+  return serial(async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await fetch("/api/shop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cop: op }) });
+        const d = (await r.json()) as { ok?: boolean; error?: string; view?: PublicView };
+        if (d.view) pub = d.view;
+        await fetchCustomer(false);
+        return d.error ? { ok: false, error: d.error } : { ok: true };
+      } catch {
+        await new Promise((ok) => setTimeout(ok, 800 * (attempt + 1)));
+      }
+    }
+    return { ok: false, error: "No connection. Please check your internet and try again." };
+  });
+}
+
+/* ---------- hooks ---------- */
+const sub = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 const serverSnap = seed();
 export function useStore() {
-  return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, load, () => serverSnap);
+  return useSyncExternalStore(sub, load, () => serverSnap);
 }
 export function useSyncStatus() {
   return useSyncExternalStore((l) => { statusListeners.add(l); return () => statusListeners.delete(l); }, () => status, () => "loading" as SyncStatus);
 }
+let derived: { pub: PublicView; mine: Mine } | null = null;
+function views() {
+  if (derived) return derived;
+  if (status === "live" || status === "offline") derived = { pub: pub ?? publicView(seed()), mine };
+  else { const s = load(); derived = { pub: publicView(s), mine: mineView(s, me()) }; }
+  return derived;
+}
+const serverViews = { pub: publicView(serverSnap), mine: { orders: [], threads: [] } as Mine };
+export function usePublic(): PublicView {
+  return useSyncExternalStore(sub, () => views().pub, () => serverViews.pub);
+}
+export function useMine(): Mine {
+  return useSyncExternalStore(sub, () => views().mine, () => serverViews.mine);
+}
+/** True once the dashboard has the real, current shop data to show. */
+export function useStaffReady() {
+  return useSyncExternalStore(sub, () => status === "local" || staffLoaded || staffDenied, () => false);
+}
+export function useStaffDenied() {
+  return useSyncExternalStore(sub, () => staffDenied, () => false);
+}
 
 export function dayPiecesOf(s: State, date: string) {
   const idx = sizeIndex(s.products);
-  return s.orders.filter((o) => o.date === date).reduce((n, o) => n + orderPieces(o, idx), 0);
+  return s.orders.filter((o) => o.date === date && isLive(o)).reduce((n, o) => n + orderPieces(o, idx), 0);
 }
 export const reduceMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -212,6 +368,12 @@ export function sizeIndex(products: Product[]) {
   products.forEach((p) => p.sizes.forEach((s) => m.set(s.code, { product: p, size: s })));
   return m;
 }
+/** "Pastel de Nata · 12 pc" instead of a shop code like "nx12". */
+export function itemLabel(code: string, idx: ReturnType<typeof sizeIndex>) {
+  const m = idx.get(code);
+  return m ? `${m.product.name} · ${m.size.pieces} pc` : code;
+}
+export const itemsText = (o: Order, idx: ReturnType<typeof sizeIndex>, sep = "; ") => o.items.map((i) => `${i.qty} × ${itemLabel(i.code, idx)}`).join(sep);
 export function orderPieces(o: Order, idx: ReturnType<typeof sizeIndex>) {
   return o.items.reduce((s, i) => s + i.qty * (idx.get(i.code)?.size.pieces ?? 0), 0);
 }

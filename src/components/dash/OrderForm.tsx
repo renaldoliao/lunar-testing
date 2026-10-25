@@ -3,7 +3,7 @@ import { DAILY_LIMIT, dayPiecesOf, iso, money, orderBooked, orderPieces, parse, 
 import { ItemPicker, TimeChips } from "./Pickers";
 import { toast } from "./Toast";
 
-export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Order | undefined; date: string; weekOffset: number; onDone: () => void }) {
+export function OrderForm({ initial, date, weekOffset, onDone, embedded }: { initial?: Order | undefined; date: string; weekOffset: number; onDone: () => void; embedded?: boolean }) {
   const s = useStore();
   const { products } = s;
   const [d, setD] = useState(initial?.date ?? date);
@@ -27,7 +27,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
   // Codes on an older order whose size was removed or switched off still show, so nothing is lost.
   const orphans = items.filter((i) => !products.some((p) => p.sizes.some((z) => z.on && z.code === i.code)));
 
-  const build = (pending: boolean): Order => ({ id: initial?.id ?? uid(), date: d, time: time as number, name: name.trim(), phone: phone.trim(), items, note: note.trim(), text, source: initial?.source ?? "by hand", pending, placed: initial?.placed ?? Date.now() });
+  const build = (pending: boolean): Order => ({ ...(initial ?? {}), id: initial?.id ?? uid(), date: d, time: time as number, name: name.trim(), phone: phone.trim(), items, note: note.trim(), text, source: initial?.source ?? "by hand", pending, placed: initial?.placed ?? Date.now() });
   const check = () => {
     if (time === "") return setErr("Pick a pickup time."), false;
     if (!name.trim()) return setErr("Add the customer's name."), false;
@@ -40,12 +40,6 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
     onDone();
     void dispatch(initial ? { t: "update", order: o } : { t: "add", order: o }).then((r) => toast(r.ok ? (initial ? `Saved ${o.name}'s order` : `Added ${o.name}, ${fmtDay(o.date)}`) : r.error));
   };
-  const confirmIt = () => {
-    if (!check()) return;
-    const o = build(false);
-    onDone();
-    void dispatch({ t: "update", order: o }).then((r) => toast(r.ok ? `Confirmed ${o.name}. ${o.text ? "Text" : "Call"} them on ${o.phone || "their number"}` : r.error));
-  };
   const del = () => {
     if (!initial) return;
     if (!sure) return setSure(true);
@@ -56,9 +50,9 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
   const input = "w-full border-b-2 border-border bg-transparent py-1.5 text-lg outline-none focus:border-primary";
 
   return (
-    <div className="space-y-6 pb-24 pr-2">
-      <div className="a-rise pr-12">
-        <p className="text-sm text-muted-foreground">{initial?.pending ? "New online order, not confirmed yet" : initial ? "Edit order" : "Write an order"}</p>
+    <div className={`space-y-6 pr-2 ${embedded ? "pt-2" : "pb-24"}`}>
+      <div className={`a-rise pr-12 ${embedded ? "hidden" : ""}`}>
+        <p className="text-sm text-muted-foreground">{initial ? "Edit order" : "Write an order"}</p>
         <p className="font-serif text-3xl leading-[1.05] text-foreground">{parse(d).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
       </div>
 
@@ -95,7 +89,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
             <button type="button" onClick={() => setItems(items.filter((i) => i.code !== o.code))} className="press text-muted-foreground underline hover:text-destructive">remove</button>
           </div>
         ))}
-        <ItemPicker products={products} items={items} onChange={setItems} showCodes />
+        <ItemPicker products={products} items={items} onChange={setItems} />
         <div className="mt-2 flex justify-between text-sm">
           <span className="text-muted-foreground">{pcs} pieces · {money(total)}</span>
           <span className={dayLoad > DAILY_LIMIT ? "font-semibold text-destructive" : "text-muted-foreground"}>{dayLoad} of {DAILY_LIMIT} for the day</span>
@@ -103,7 +97,7 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
       </div>
 
       <label className="block"><span className={label}>Note</span>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="less sweet, gift box, call when outside" className={`${input} font-hand text-xl`} />
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="less sweet, gift box, call when outside" className={input} />
       </label>
 
       <label className="flex cursor-pointer gap-3">
@@ -113,11 +107,8 @@ export function OrderForm({ initial, date, weekOffset, onDone }: { initial?: Ord
 
       <div className="sticky bottom-0 -mx-6 mt-2 flex items-center gap-4 border-t border-border bg-card px-6 py-4">
         {err && <p key={err} className="a-rise absolute -top-9 left-6 bg-destructive px-2 py-1 text-sm text-destructive-foreground">{err}</p>}
-        {initial?.pending
-          ? <button onClick={confirmIt} className="press bg-primary px-5 py-3 font-semibold text-primary-foreground hover:opacity-90">Confirm order</button>
-          : <button onClick={save} className="press bg-primary px-5 py-3 font-semibold text-primary-foreground hover:opacity-90">Save order</button>}
-        {initial?.pending && <button onClick={save} className="press text-sm underline">Save, confirm later</button>}
-        {!initial?.pending && <button onClick={onDone} className="press underline">Cancel</button>}
+        <button onClick={save} className="press bg-primary px-5 py-3 font-mono text-sm font-medium uppercase tracking-[0.08em] text-primary-foreground hover:opacity-90">{initial ? "Save changes" : "Save order"}</button>
+        <button onClick={onDone} className="press underline underline-offset-4">Cancel</button>
         {initial && <button onClick={del} className={`press ml-auto text-sm ${sure ? "bg-destructive px-3 py-2 font-semibold text-destructive-foreground" : "text-destructive underline"}`}>{sure ? "Tap again to delete" : "Delete"}</button>}
       </div>
     </div>

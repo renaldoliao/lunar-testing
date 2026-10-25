@@ -39,7 +39,7 @@ export function ItemPicker({ products, items, onChange, showCodes }: { products:
                     <div className="flex-1 text-sm">
                       <span className={q ? "font-semibold text-foreground" : "text-foreground"}>Box of {s.pieces}</span>
                       <span className="ml-2 text-muted-foreground">{money(s.price)}</span>
-                      {showCodes && <span className="code-chip ml-2">{s.code}</span>}
+                      
                     </div>
                     <Stepper value={q} onChange={(n) => setQty(s.code, n)} label={`${p.name} box of ${s.pieces}`} />
                   </div>
@@ -54,10 +54,10 @@ export function ItemPicker({ products, items, onChange, showCodes }: { products:
   );
 }
 
-export function TimeChips({ value, onChange, disabled }: { value: number | ""; onChange: (t: number) => void; disabled?: (t: number) => boolean }) {
+export function TimeChips({ value, onChange, disabled, times = TIMES }: { value: number | ""; onChange: (t: number) => void; disabled?: (t: number) => boolean; times?: number[] }) {
   return (
     <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-      {TIMES.map((t) => {
+      {times.map((t) => {
         const on = value === t, off = disabled?.(t);
         return (
           <button key={t} type="button" disabled={off} onClick={() => onChange(t)}
