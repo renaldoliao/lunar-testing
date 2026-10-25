@@ -39,6 +39,26 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
   const dayOrders = (k: string) => s.orders.filter((o) => o.date === k).sort((a, b) => a.time - b.time);
   const dayPieces = (k: string) => dayOrders(k).reduce((n, o) => n + orderPieces(o, idx), 0);
   const pending = s.orders.filter((o) => o.pending).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  // Our own double-tap: two taps on the same order within 600ms, even if the hand moves a little.
+  // This does not depend on the computer's double-click speed setting, and works the same on phones.
+  const lastTap = useRef<{ id: string; t: number; x: number; y: number } | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tap = (e: React.PointerEvent, o: Order) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    if (o.pending) return open(o);
+    const now = performance.now(), l = lastTap.current;
+    clearTimeout(armTimer.current);
+    if (l && l.id === o.id && now - l.t < 600 && Math.hypot(e.clientX - l.x, e.clientY - l.y) < 48) {
+      lastTap.current = null;
+      setArmed(null);
+      toggle(o.id);
+    } else {
+      lastTap.current = { id: o.id, t: now, x: e.clientX, y: e.clientY };
+      setArmed(o.id);
+      armTimer.current = setTimeout(() => { setArmed(null); lastTap.current = null; }, 600);
+    }
+  };
   const toggle = (id: string) => {
     setPicked((p) => new Set(p).add(id));
     void dispatch({ t: "done", id, v: !s.done[id] }).then((r) => { if (!r.ok) toast(r.error); });
@@ -100,8 +120,8 @@ export function WeekView({ numbersOpen, setNumbersOpen }: { numbersOpen: boolean
                   const cls = ["ent group border-b border-border", done && "picked", picked.has(o.id) && "now", just.has(o.id) && "just", o.pending && "pending"].filter(Boolean).join(" ");
                   return (
                     <div key={o.id} className={cls}>
-                      <div role="button" tabIndex={0} onClick={() => { if (o.pending) open(o); }} onDoubleClick={() => { if (!o.pending) toggle(o.id); }} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
-                        title={o.pending ? "Tap to confirm" : done ? "Double-click to un-cross" : "Double-click to cross out"} className="body cursor-pointer select-none touch-manipulation px-3 py-2.5 hover:bg-secondary">
+                      <div role="button" tabIndex={0} onPointerUp={(e) => tap(e, o)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), o.pending ? open(o) : toggle(o.id))}
+                        title={o.pending ? "Tap to confirm" : done ? "Double-click to un-cross" : "Double-click to cross out"} className={`body cursor-pointer select-none touch-manipulation px-3 py-2.5 hover:bg-secondary ${armed === o.id ? "!bg-muted" : ""}`}>
                         <div className="flex items-center gap-2">
                           <span className={`whitespace-nowrap px-1.5 font-mono text-[13px] font-medium ${soon ? "soon" : ""} ${done ? "bg-muted-foreground text-card" : "bg-primary text-primary-foreground"}`}>{fmtTime(o.time)}</span>
                           {o.pending ? <span className="text-xs font-mono font-medium uppercase tracking-[0.08em] text-foreground">new, confirm</span>
